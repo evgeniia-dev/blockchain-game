@@ -686,7 +686,7 @@ export default function App() {
 
                 <section className="panel">
                   <h2><img src={ledgerIcon} alt="" /> Shared Scoreboard / Ledger</h2>
-                  <p className="small-note">Keep an eye on the scoreboard.</p>
+                  <p className="small-note">Keep an eye on the scoreboardßß.</p>
                   <div className="shared-scoreboard">
                     {players.map((p) => (
                       <div key={p.id} className="score-row">
