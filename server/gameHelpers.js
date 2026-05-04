@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { SUITS, RANKS, START_BALANCE, PLAYER_COLORS } from './gameConstants.js'
+import { SUITS, RANKS, START_BALANCE } from './gameConstants.js'
 
 export function shuffle(array) {
   const copy = [...array]

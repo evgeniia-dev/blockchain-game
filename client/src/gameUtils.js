@@ -1,4 +1,4 @@
-import { SUITS, SUIT_SYMBOLS, RANKS, RANK_VALUES, PLAYERS, BOARD, START_COINS } from './constants.js'
+import { SUITS, SUIT_SYMBOLS, RANKS, RANK_VALUES, PLAYERS, BOARD, START_COINS, MINING_REWARD, ROUND_LIMIT } from './constants.js'
 
 export function shuffle(list) {
   const copy = [...list]
