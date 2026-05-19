@@ -27,22 +27,22 @@ import player2Pawn from './assets/pawns/player2-mint-board.png'
 import player3Pawn from './assets/pawns/player3-lilac-board.png'
 
 import incomeBack from './assets/cards/income/income-back.png'
-import fishingProfitBack from './assets/cards/income/fishing-profit-back.png'
-import marketBonusBack from './assets/cards/income/market-bonus-back.png'
-import pearlTradeBack from './assets/cards/income/pearl-trade-back.png'
-import shellSaleBack from './assets/cards/income/shell-sale-back.png'
+import fishingProfitFront from './assets/cards/income/fishing-profit-back.png'
+import marketBonusFront from './assets/cards/income/market-bonus-back.png'
+import pearlTradeFront from './assets/cards/income/pearl-trade-back.png'
+import shellSaleFront from './assets/cards/income/shell-sale-back.png'
 
 import expenseBack from './assets/cards/expense/expense-back.png'
-import boatRepairBack from './assets/cards/expense/boat-repair-back.png'
-import brokenToolsBack from './assets/cards/expense/broken-tools-back.png'
-import sharedCostBack from './assets/cards/expense/shared-cost-back.png'
-import stormDamageBack from './assets/cards/expense/storm-damage-back.png'
+import boatRepairFront from './assets/cards/expense/boat-repair-back.png'
+import brokenToolsFront from './assets/cards/expense/broken-tools-back.png'
+import sharedCostFront from './assets/cards/expense/shared-cost-back.png'
+import stormDamageFront from './assets/cards/expense/storm-damage-back.png'
 
 import actionBack from './assets/cards/action/action-back.png'
-import axeBack from './assets/cards/action/axe-back.png'
-import fireBack from './assets/cards/action/fire-back.png'
-import jellyfishBack from './assets/cards/action/jellyfish-back.png'
-import totemBack from './assets/cards/action/totem-back.png'
+import axeFront from './assets/cards/action/axe-back.png'
+import fireFront from './assets/cards/action/fire-back.png'
+import jellyfishFront from './assets/cards/action/jellyfish-back.png'
+import totemFront from './assets/cards/action/totem-back.png'
 
 import story1 from './assets/story/story-1.png'
 import story2 from './assets/story/story-2.png'
@@ -54,7 +54,7 @@ import story7 from './assets/story/story-7.png'
 import story8 from './assets/story/story-8.png'
 import story9 from './assets/story/story-9.png'
 
-const socket = io('https://blockchain-game-production.up.railway.app')
+const socket = io()
 
 const STORY_IMAGES = [story1, story2, story3, story4, story5, story6, story7, story8, story9]
 
@@ -79,19 +79,19 @@ const GENERIC_CARD_BACKS = {
   action: actionBack
 }
 
-const TRANSACTION_CARD_BACKS = {
-  'Shell Sale': shellSaleBack,
-  'Fishing Profit': fishingProfitBack,
-  'Pearl Trade': pearlTradeBack,
-  'Market Bonus': marketBonusBack,
-  'Boat Repair': boatRepairBack,
-  'Broken Tools': brokenToolsBack,
-  'Storm Damage': stormDamageBack,
-  'Shared Cost': sharedCostBack,
-  Jellyfish: jellyfishBack,
-  Fire: fireBack,
-  Totem: totemBack,
-  Axe: axeBack
+const TRANSACTION_CARD_FRONTS = {
+  'Shell Sale': shellSaleFront,
+  'Fishing Profit': fishingProfitFront,
+  'Pearl Trade': pearlTradeFront,
+  'Market Bonus': marketBonusFront,
+  'Boat Repair': boatRepairFront,
+  'Broken Tools': brokenToolsFront,
+  'Storm Damage': stormDamageFront,
+  'Shared Cost': sharedCostFront,
+  Jellyfish: jellyfishFront,
+  Fire: fireFront,
+  Totem: totemFront,
+  Axe: axeFront
 }
 
 const BOARD = [
@@ -126,14 +126,18 @@ function face(card) {
   return `${card.rank}${symbols[card.suit] || ''}`
 }
 
-function getTransactionCardBack(card) {
+function getCardBack(card) {
   if (!card) return actionBack
-
-  if (TRANSACTION_CARD_BACKS[card.title]) {
-    return TRANSACTION_CARD_BACKS[card.title]
-  }
-
   return GENERIC_CARD_BACKS[card.kind] || actionBack
+}
+
+function getCardFront(card) {
+  if (!card) return actionBack
+  return TRANSACTION_CARD_FRONTS[card.title] || GENERIC_CARD_BACKS[card.kind] || actionBack
+}
+
+function getCardImage(card, revealed) {
+  return revealed ? getCardFront(card) : getCardBack(card)
 }
 
 export default function App() {
@@ -294,7 +298,6 @@ export default function App() {
       handleResponse(response, 'Could not confirm ledger.')
     })
   }
-
     return (
     <div className="app-shell" style={{ backgroundImage: `url(${background})` }}>
       <div className="app-overlay">
@@ -690,7 +693,7 @@ export default function App() {
 
               <button className="click-card" onClick={() => setCardRevealed(true)}>
                 <img
-                  src={getTransactionCardBack(game.currentEvent.card)}
+                  src={getCardImage(game.currentEvent.card, cardRevealed)}
                   alt=""
                   className="card-back-only"
                 />
@@ -798,8 +801,8 @@ export default function App() {
                 <div className="rule-card">
                   <b>Card pickup</b>
                   <p>
-                    The card is revealed only to the player who picked it up. The card is kept for
-                    the round, but its effect is applied after the mining phase.
+                    The card first appears face down. The current player clicks it to reveal the
+                    illustrated transaction card. The effect is applied after mining.
                   </p>
                 </div>
 
