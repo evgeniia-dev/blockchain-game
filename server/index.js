@@ -2,6 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import crypto from 'crypto'
 import http from 'http'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { Server } from 'socket.io'
 
 const app = express()
@@ -12,8 +14,13 @@ const io = new Server(httpServer, {
   cors: { origin: '*' }
 })
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const clientDistPath = path.join(__dirname, '../client/dist')
+
 app.use(cors())
 app.use(express.json())
+app.use(express.static(clientDistPath))
 
 const START_BALANCE = 50
 const MINING_COST = 1
@@ -347,7 +354,6 @@ function prepareMiningOffer(game) {
 function scoreMiningCard(card, visibleCards) {
   return visibleCards.reduce((total, other) => {
     if (!other) return total
-
     return total + (card.rank === other.rank ? 1 : 0) + (card.suit === other.suit ? 1 : 0)
   }, 0)
 }
@@ -573,13 +579,7 @@ io.on('connection', (socket) => {
       code,
       hostId: socket.id,
       status: 'waiting',
-      players: [
-        {
-          id: socket.id,
-          name: safeName,
-          color: PLAYER_COLORS[0]
-        }
-      ],
+      players: [{ id: socket.id, name: safeName, color: PLAYER_COLORS[0] }],
       game: null
     }
 
@@ -923,6 +923,10 @@ io.on('connection', (socket) => {
       broadcastRoom(room)
     }
   })
+})
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'))
 })
 
 httpServer.listen(PORT, () => {
