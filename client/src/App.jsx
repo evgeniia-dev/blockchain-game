@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { io } from 'socket.io-client'
 import './index.css'
 
 import background from './assets/bg/background.png'
@@ -20,15 +21,28 @@ import totemIcon from './assets/icons/totem.png'
 import chestIcon from './assets/blockchain/chest.png'
 import chainIcon from './assets/blockchain/chain.png'
 import ledgerIcon from './assets/blockchain/ledger.png'
-import crystalIcon from './assets/blockchain/crystal.png'
 
 import player1Pawn from './assets/pawns/player1-blue-board.png'
 import player2Pawn from './assets/pawns/player2-mint-board.png'
 import player3Pawn from './assets/pawns/player3-lilac-board.png'
 
-import incomeBack from './assets/cards/income-back.png'
-import expenseBack from './assets/cards/expense-back.png'
-import actionBack from './assets/cards/action-back.png'
+import incomeBack from './assets/cards/income/income-back.png'
+import fishingProfitBack from './assets/cards/income/fishing-profit-back.png'
+import marketBonusBack from './assets/cards/income/market-bonus-back.png'
+import pearlTradeBack from './assets/cards/income/pearl-trade-back.png'
+import shellSaleBack from './assets/cards/income/shell-sale-back.png'
+
+import expenseBack from './assets/cards/expense/expense-back.png'
+import boatRepairBack from './assets/cards/expense/boat-repair-back.png'
+import brokenToolsBack from './assets/cards/expense/broken-tools-back.png'
+import sharedCostBack from './assets/cards/expense/shared-cost-back.png'
+import stormDamageBack from './assets/cards/expense/storm-damage-back.png'
+
+import actionBack from './assets/cards/action/action-back.png'
+import axeBack from './assets/cards/action/axe-back.png'
+import fireBack from './assets/cards/action/fire-back.png'
+import jellyfishBack from './assets/cards/action/jellyfish-back.png'
+import totemBack from './assets/cards/action/totem-back.png'
 
 import story1 from './assets/story/story-1.png'
 import story2 from './assets/story/story-2.png'
@@ -40,174 +54,86 @@ import story7 from './assets/story/story-7.png'
 import story8 from './assets/story/story-8.png'
 import story9 from './assets/story/story-9.png'
 
+const socket = io('http://localhost:3001')
+
 const STORY_IMAGES = [story1, story2, story3, story4, story5, story6, story7, story8, story9]
-const DICE = { 1: dice1, 2: dice2, 3: dice3, 4: dice4, 5: dice5, 6: dice6 }
-const PAWNS = { 1: player1Pawn, 2: player2Pawn, 3: player3Pawn }
-const CARD_BACKS = { income: incomeBack, expense: expenseBack, action: actionBack }
 
-const START_COINS = 50
-const MINING_COST = 1
-const MINING_REWARD = 5
-const ROUND_LIMIT = 12
+const DICE = {
+  1: dice1,
+  2: dice2,
+  3: dice3,
+  4: dice4,
+  5: dice5,
+  6: dice6
+}
 
-const SUITS = ['clubs', 'diamonds', 'hearts', 'spades']
-const SUIT_SYMBOL = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' }
-const RANKS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2']
-const RANK_VALUE = { A: 14, K: 13, Q: 12, J: 11, 10: 10, 9: 9, 8: 8, 7: 7, 6: 6, 5: 5, 4: 4, 3: 3, 2: 2 }
+const PAWNS = {
+  1: player1Pawn,
+  2: player2Pawn,
+  3: player3Pawn
+}
 
-const PLAYERS = [
-  { id: 1, label: 'Player 1', colorName: 'Blue', color: '#7288ff' },
-  { id: 2, label: 'Player 2', colorName: 'Mint', color: '#6ed9bd' },
-  { id: 3, label: 'Player 3', colorName: 'Lilac', color: '#c79cff' }
-]
+const GENERIC_CARD_BACKS = {
+  income: incomeBack,
+  expense: expenseBack,
+  action: actionBack
+}
+
+const TRANSACTION_CARD_BACKS = {
+  'Shell Sale': shellSaleBack,
+  'Fishing Profit': fishingProfitBack,
+  'Pearl Trade': pearlTradeBack,
+  'Market Bonus': marketBonusBack,
+  'Boat Repair': boatRepairBack,
+  'Broken Tools': brokenToolsBack,
+  'Storm Damage': stormDamageBack,
+  'Shared Cost': sharedCostBack,
+  Jellyfish: jellyfishBack,
+  Fire: fireBack,
+  Totem: totemBack,
+  Axe: axeBack
+}
 
 const BOARD = [
   { id: 0, name: 'Start', type: 'start', icon: startIcon, pos: [1, 1] },
   { id: 1, name: 'Income', type: 'income', icon: chestIcon, pos: [2, 1] },
   { id: 2, name: 'Expense', type: 'expense', icon: expenseIcon, pos: [3, 1] },
   { id: 3, name: 'Action', type: 'action', icon: actionIcon, pos: [4, 1] },
-  { id: 4, name: 'Jellyfish', type: 'jellyfish-corner', icon: jellyfishIcon, pos: [5, 1] },
+  { id: 4, name: 'Jellyfish', type: 'jellyfish', icon: jellyfishIcon, pos: [5, 1] },
   { id: 5, name: 'Income', type: 'income', icon: chestIcon, pos: [5, 2] },
   { id: 6, name: 'Action', type: 'action', icon: actionIcon, pos: [5, 3] },
   { id: 7, name: 'Expense', type: 'expense', icon: expenseIcon, pos: [5, 4] },
-  { id: 8, name: 'Fire', type: 'fire-corner', icon: fireIcon, pos: [5, 5] },
+  { id: 8, name: 'Fire', type: 'fire', icon: fireIcon, pos: [5, 5] },
   { id: 9, name: 'Income', type: 'income', icon: chestIcon, pos: [4, 5] },
   { id: 10, name: 'Expense', type: 'expense', icon: expenseIcon, pos: [3, 5] },
   { id: 11, name: 'Action', type: 'action', icon: actionIcon, pos: [2, 5] },
-  { id: 12, name: 'Totem', type: 'totem-corner', icon: totemIcon, pos: [1, 5] },
+  { id: 12, name: 'Totem', type: 'totem', icon: totemIcon, pos: [1, 5] },
   { id: 13, name: 'Expense', type: 'expense', icon: expenseIcon, pos: [1, 4] },
   { id: 14, name: 'Income', type: 'income', icon: chestIcon, pos: [1, 3] },
   { id: 15, name: 'Action', type: 'action', icon: actionIcon, pos: [1, 2] }
 ]
 
-function shuffle(list) {
-  const copy = [...list]
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
-}
-
-function standardDeck() {
-  return shuffle(
-    SUITS.flatMap((suit) =>
-      RANKS.map((rank) => ({
-        kind: 'standard',
-        rank,
-        suit,
-        value: RANK_VALUE[rank],
-        title: `${rank}${SUIT_SYMBOL[suit]}`
-      }))
-    )
-  )
-}
-
 function face(card) {
   if (!card) return '—'
-  return `${card.rank}${SUIT_SYMBOL[card.suit]}`
-}
 
-function rollDice() {
-  return Math.floor(Math.random() * 6) + 1
-}
-
-function makeIncomeDeck() {
-  const effects = [
-    { title: 'Shell Sale', text: 'Receive 4 Istoken from the player on your left.', effect: 'leftPays', amount: 4 },
-    { title: 'Fishing Profit', text: 'Receive 4 Istoken from the player on your right.', effect: 'rightPays', amount: 4 },
-    { title: 'Pearl Trade', text: 'Receive 5 Istoken from the bank.', effect: 'bankGain', amount: 5 },
-    { title: 'Market Bonus', text: 'Each other player gives you 2 Istoken.', effect: 'allPay', amount: 2 }
-  ]
-
-  return shuffle(Array.from({ length: 26 }, (_, i) => ({
-    ...effects[i % effects.length],
-    kind: 'income',
-    rank: RANKS[i % RANKS.length],
-    suit: SUITS[i % SUITS.length]
-  })))
-}
-
-function makeExpenseDeck() {
-  const effects = [
-    { title: 'Boat Repair', text: 'Pay 5 Istoken to the player on your left.', effect: 'payLeft', amount: 5 },
-    { title: 'Broken Tools', text: 'Pay 5 Istoken to the player on your right.', effect: 'payRight', amount: 5 },
-    { title: 'Storm Damage', text: 'Pay 4 Istoken to the bank.', effect: 'bankLoss', amount: 4 },
-    { title: 'Shared Cost', text: 'Pay 2 Istoken to each other player.', effect: 'payAll', amount: 2 }
-  ]
-
-  return shuffle(Array.from({ length: 26 }, (_, i) => ({
-    ...effects[i % effects.length],
-    kind: 'expense',
-    rank: RANKS[(i + 4) % RANKS.length],
-    suit: SUITS[(i + 1) % SUITS.length]
-  })))
-}
-
-function makeActionDeck() {
-  const effects = [
-    { title: 'Jellyfish', text: 'Skip the next mining round.', action: 'jellyfish', rank: 'J', suit: 'hearts' },
-    { title: 'Fire', text: 'Each other player gives you 1 Istoken.', action: 'fire', rank: 'Q', suit: 'diamonds' },
-    { title: 'Totem', text: 'You cannot mine for the rest of the game.', action: 'totem', rank: 'K', suit: 'clubs' },
-    { title: 'Axe', text: 'Draw two standard cards and choose one during mining.', action: 'axe', rank: 'A', suit: 'spades' }
-  ]
-
-  return shuffle(Array.from({ length: 54 }, (_, i) => ({ ...effects[i % effects.length], kind: 'action' })))
-}
-
-function createPlayers(names) {
-  return PLAYERS.map((p, index) => ({
-    ...p,
-    name: names[index] || p.label,
-    coins: START_COINS,
-    position: 0,
-    active: true,
-    skipNextMining: false,
-    blockedForever: false,
-    blockedThisRound: false,
-    transactionCard: null,
-    miningCard: null,
-    lastRoll: null
-  }))
-}
-
-function draw(deck, fallback) {
-  const safeDeck = deck.length ? deck : fallback()
-  return { card: safeDeck[0], deck: safeDeck.slice(1) }
-}
-
-function drawStandard(deck, count) {
-  let current = deck.length ? deck : standardDeck()
-  const cards = []
-  for (let i = 0; i < count; i += 1) {
-    if (!current.length) current = standardDeck()
-    cards.push(current[0])
-    current = current.slice(1)
+  const symbols = {
+    clubs: '♣',
+    diamonds: '♦',
+    hearts: '♥',
+    spades: '♠'
   }
-  return { cards, deck: current }
+
+  return `${card.rank}${symbols[card.suit] || ''}`
 }
 
-function leftIndex(players, index) {
-  for (let i = 1; i < players.length; i += 1) {
-    const target = (index - i + players.length) % players.length
-    if (players[target].active) return target
+function getTransactionCardBack(card) {
+  if (!card) return actionBack
+
+  if (TRANSACTION_CARD_BACKS[card.title]) {
+    return TRANSACTION_CARD_BACKS[card.title]
   }
-  return -1
-}
 
-function rightIndex(players, index) {
-  for (let i = 1; i < players.length; i += 1) {
-    const target = (index + i) % players.length
-    if (players[target].active) return target
-  }
-  return -1
-}
-
-function score(card, visibleCards) {
-  return visibleCards.reduce((total, other) => {
-    if (!other) return total
-    return total + (card.rank === other.rank ? 1 : 0) + (card.suit === other.suit ? 1 : 0)
-  }, 0)
+  return GENERIC_CARD_BACKS[card.kind] || actionBack
 }
 
 export default function App() {
@@ -215,448 +141,161 @@ export default function App() {
   const [storyIndex, setStoryIndex] = useState(0)
   const [showStory, setShowStory] = useState(false)
   const [showRules, setShowRules] = useState(false)
-  const [showSetup, setShowSetup] = useState(false)
-  const [names, setNames] = useState(['Player 1', 'Player 2', 'Player 3'])
-
-  const [players, setPlayers] = useState(createPlayers(names))
-  const [round, setRound] = useState(1)
-  const [phase, setPhase] = useState('ready')
-  const [diceValue, setDiceValue] = useState(1)
-  const [turnIndex, setTurnIndex] = useState(0)
-
-  const [incomeDeck, setIncomeDeck] = useState(makeIncomeDeck())
-  const [expenseDeck, setExpenseDeck] = useState(makeExpenseDeck())
-  const [actionDeck, setActionDeck] = useState(makeActionDeck())
-  const [playingDeck, setPlayingDeck] = useState(standardDeck())
-  const [winningCard, setWinningCard] = useState(null)
-
-  const [ledger, setLedger] = useState([])
-  const [blocks, setBlocks] = useState([])
-  const [currentEvent, setCurrentEvent] = useState(null)
+  const [playerName, setPlayerName] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [roomCode, setRoomCode] = useState('')
+  const [roomData, setRoomData] = useState(null)
+  const [roomError, setRoomError] = useState('')
   const [cardRevealed, setCardRevealed] = useState(false)
-  const [pendingPlayers, setPendingPlayers] = useState(null)
-  const [currentMiner, setCurrentMiner] = useState(0)
-  const [miningChoice, setMiningChoice] = useState(null)
-  const [winner, setWinner] = useState('')
-  const [ledgerChanges, setLedgerChanges] = useState([])
 
-  const activePlayers = useMemo(() => players.filter((p) => p.active), [players])
-  const activeTurnPlayer = players[turnIndex]
-  const miner = pendingPlayers?.[currentMiner]
+  const game = roomData?.game || null
+  const players = game?.players || []
 
-  function addLedger(items) {
-    setLedger((prev) => [...items.reverse(), ...prev].slice(0, 80))
-  }
+  const activePlayers = useMemo(() => players.filter((player) => player.active), [players])
+  const myPlayer = players.find((player) => player.id === socket.id)
+  const currentTurnPlayer = players.find((player) => player.id === game?.currentTurnId)
+  const currentMiner = players.find((player) => player.id === game?.currentMinerId)
+  const cardOwner = players.find((player) => player.id === game?.currentEvent?.ownerId)
 
-  function startGame() {
-    const freshDeck = standardDeck()
-    const firstWinning = freshDeck[0]
-    const newPlayers = createPlayers(names)
+  const isHost = roomData?.hostId === socket.id
+  const isMyMovementTurn = game?.phase === 'movement' && game?.currentTurnId === socket.id
+  const isMyCardReveal = game?.phase === 'card-reveal' && game?.currentEvent?.ownerId === socket.id
+  const isMyMiningTurn = game?.phase === 'mining' && game?.currentMinerId === socket.id
+  const hasConfirmedLedger = Boolean(game?.ledgerConfirmedBy?.includes(socket.id))
 
-    setPlayers(newPlayers)
-    setRound(1)
-    setPhase('ready')
-    setTurnIndex(0)
-    setDiceValue(1)
-    setIncomeDeck(makeIncomeDeck())
-    setExpenseDeck(makeExpenseDeck())
-    setActionDeck(makeActionDeck())
-    setPlayingDeck(freshDeck.slice(1))
-    setWinningCard(firstWinning)
-    setLedger([
-      `Initial Winning Card is ${face(firstWinning)}.`,
-      'All players start with 50 Istoken.',
-      'The shared scoreboard represents the synchronized blockchain ledger.'
-    ])
-    setBlocks([{ id: 'genesis', title: 'Genesis Block', miner: 'System', reward: 0, card: firstWinning }])
-    setCurrentEvent(null)
-    setPendingPlayers(null)
-    setCurrentMiner(0)
-    setMiningChoice(null)
-    setWinner('')
-    setLedgerChanges([])
-    setShowSetup(false)
-    setScreen('game')
-  }
-
-  function drawCardForTile(tile, decks) {
-    if (tile.type === 'income' || tile.type === 'fire-corner') {
-      const result = draw(decks.income, makeIncomeDeck)
-      decks.income = result.deck
-      return result.card
-    }
-
-    if (tile.type === 'expense' || tile.type === 'jellyfish-corner') {
-      const result = draw(decks.expense, makeExpenseDeck)
-      decks.expense = result.deck
-      return result.card
-    }
-
-    const result = draw(decks.action, makeActionDeck)
-    decks.action = result.deck
-    return result.card
-  }
-
-  function movePlayer(player, roll) {
-    let position = player.position
-    let crossedStart = false
-
-    for (let i = 0; i < roll; i += 1) {
-      position = (position + 1) % BOARD.length
-      if (position === 0) crossedStart = true
-    }
-
-    return { ...player, position, crossedStart, lastRoll: roll }
-  }
-
-  function findNextActiveIndex(fromIndex, list) {
-    for (let i = fromIndex + 1; i < list.length; i += 1) {
-      if (list[i].active) return i
-    }
-    return -1
-  }
-
-  function rollCurrentPlayer() {
-    if (phase !== 'ready' || winner) return
-
-    if (!activeTurnPlayer || !activeTurnPlayer.active) {
-      const next = findNextActiveIndex(turnIndex, players)
-      if (next >= 0) setTurnIndex(next)
-      return
-    }
-
-    const roll = rollDice()
-    const decks = { income: [...incomeDeck], expense: [...expenseDeck], action: [...actionDeck] }
-    let moved = movePlayer(activeTurnPlayer, roll)
-    const tile = BOARD[moved.position]
-    const card = drawCardForTile(tile, decks)
-    const logs = []
-
-    if (moved.crossedStart) {
-      moved.coins += 4
-      logs.push(`${moved.name} crossed Start and received 4 Istoken.`)
-    }
-
-    if (tile.type === 'jellyfish-corner') {
-      moved.coins -= 1
-      logs.push(`${moved.name} landed on Jellyfish and paid 1 extra Istoken.`)
-    }
-
-    if (tile.type === 'fire-corner') {
-      moved.coins += 1
-      logs.push(`${moved.name} landed on Fire and received 1 extra Istoken.`)
-    }
-
-    if (tile.type === 'totem-corner') {
-      moved.blockedThisRound = true
-      logs.push(`${moved.name} landed on Totem and cannot mine this round.`)
-    }
-
-    moved.transactionCard = card
-
-    const updatedPlayers = players.map((p, index) => index === turnIndex ? moved : p)
-
-    setDiceValue(roll)
-    setPlayers(updatedPlayers)
-    setIncomeDeck(decks.income)
-    setExpenseDeck(decks.expense)
-    setActionDeck(decks.action)
-    setCardRevealed(false)
-    addLedger([`${moved.name} rolled ${roll}, moved to ${tile.name}, and drew a hidden ${card.kind} card.`, ...logs])
-
-    setCurrentEvent({
-      title: `${moved.label} / ${moved.colorName}: ${moved.name}`,
-      icon: tile.icon,
-      text: `${moved.name} rolled ${roll} and moved clockwise to ${tile.name}.`,
-      note: `Transaction validated.`,
-      privateNote: `${card.title}: ${card.text} (${face(card)})`,
-      card,
-      playersAfterMove: updatedPlayers,
-      lesson: 'This is a transaction card. In blockchain, transactions are actions that can change balances, but they are only confirmed after validation.'
+  useEffect(() => {
+    socket.on('server-message', (data) => {
+      console.log(data.message, data.socketId)
     })
 
-    setPhase('movement-event')
+    socket.on('room-updated', (room) => {
+      setRoomData(room)
+      setRoomCode(room.code)
+
+      if (room.status === 'playing') {
+        setScreen('game')
+      }
+
+      if (room.game?.phase !== 'card-reveal') {
+        setCardRevealed(false)
+      }
+    })
+
+    return () => {
+      socket.off('server-message')
+      socket.off('room-updated')
+    }
+  }, [])
+
+  function handleResponse(response, fallback) {
+    if (!response.ok) {
+      setRoomError(response.error || fallback)
+      return
+    }
+
+    setRoomData(response.room)
   }
 
-  function continueAfterMove() {
-    const updatedPlayers = currentEvent.playersAfterMove
-    const nextIndex = findNextActiveIndex(turnIndex, updatedPlayers)
+  function createRoom() {
+    setRoomError('')
 
-    setCurrentEvent(null)
+    const safeName = playerName.trim()
+
+    if (!safeName) {
+      setRoomError('Enter your name first.')
+      return
+    }
+
+    socket.emit('create-room', { playerName: safeName }, (response) => {
+      handleResponse(response, 'Could not create room.')
+    })
+  }
+
+  function joinRoom() {
+    setRoomError('')
+
+    const safeName = playerName.trim()
+    const safeCode = joinCode.trim().toUpperCase()
+
+    if (!safeName) {
+      setRoomError('Enter your name first.')
+      return
+    }
+
+    if (!safeCode) {
+      setRoomError('Enter a room code.')
+      return
+    }
+
+    socket.emit('join-room', { roomCode: safeCode, playerName: safeName }, (response) => {
+      handleResponse(response, 'Could not join room.')
+    })
+  }
+
+  function leaveRoom() {
+    if (roomCode) {
+      socket.emit('leave-room', { roomCode })
+    }
+
+    setRoomCode('')
+    setJoinCode('')
+    setRoomData(null)
+    setRoomError('')
     setCardRevealed(false)
-
-    if (nextIndex >= 0) {
-      setTurnIndex(nextIndex)
-      setPlayers(updatedPlayers)
-      setPhase('ready')
-      return
-    }
-
-    setPlayers(updatedPlayers)
-    setPendingPlayers(updatedPlayers)
-    setTurnIndex(0)
-    startMiningPhase(updatedPlayers)
+    setScreen('home')
   }
 
-  function miningReason(player) {
-    if (!player.active) return 'This player is disqualified.'
-    if (player.skipNextMining) return 'Jellyfish effect: this player must skip this mining round.'
-    if (player.blockedForever) return 'Totem effect: this player can no longer participate in mining.'
-    if (player.blockedThisRound) return 'Totem corner: this player cannot mine this round.'
-    if (player.coins < MINING_COST) return 'This player does not have enough Istoken to pay the mining cost.'
-    return ''
+  function startRoomGame() {
+    socket.emit('start-room-game', { roomCode }, (response) => {
+      handleResponse(response, 'Could not start game.')
+
+      if (response.ok) {
+        setScreen('game')
+      }
+    })
   }
 
-  function startMiningPhase(basePlayers = players) {
-    const noOneAllowed = basePlayers.filter((p) => p.active).every((p) => Boolean(miningReason(p)))
-
-    if (noOneAllowed) {
-      const richest = [...basePlayers.filter((p) => p.active)].sort((a, b) => b.coins - a.coins)[0]
-      setWinner(`${richest.name} wins because no active player is allowed to participate in mining.`)
-      setPhase('game-over')
-      return
-    }
-
-    setPendingPlayers(basePlayers)
-    setCurrentMiner(0)
-    setPhase('mining')
-    prepareMiner(0, basePlayers)
+  function rollDice() {
+    socket.emit('room-roll-dice', { roomCode }, (response) => {
+      handleResponse(response, 'Could not roll dice.')
+    })
   }
 
-  function prepareMiner(index, basePlayers = pendingPlayers) {
-    const list = basePlayers || players
-    const player = list[index]
+  function continueAfterCard() {
+    socket.emit('room-continue-after-card', { roomCode }, (response) => {
+      handleResponse(response, 'Could not continue.')
 
-    if (!player || !player.active) {
-      nextMiner(index + 1, list)
-      return
-    }
-
-    const reason = miningReason(player)
-
-    if (reason) {
-      setMiningChoice({ blocked: true, reason, cards: [] })
-      return
-    }
-
-    const count = player.transactionCard?.action === 'axe' ? 2 : 1
-    const result = drawStandard(playingDeck, count)
-
-    setPlayingDeck(result.deck)
-    setMiningChoice({ blocked: false, cards: result.cards, selected: result.cards[0] })
+      if (response.ok) {
+        setCardRevealed(false)
+      }
+    })
   }
 
-  function nextMiner(nextIndex, updatedPlayers = pendingPlayers) {
-    if (nextIndex >= updatedPlayers.length) {
-      revealAndExecute(updatedPlayers)
-      return
-    }
-
-    setCurrentMiner(nextIndex)
-    prepareMiner(nextIndex, updatedPlayers)
-  }
-
-  function skipMining() {
-    const updated = pendingPlayers.map((p, i) =>
-      i === currentMiner ? { ...p, skipNextMining: false, miningCard: null } : p
-    )
-
-    setPendingPlayers(updated)
-    nextMiner(currentMiner + 1, updated)
+  function selectMiningCard(cardId) {
+    socket.emit('room-select-mining-card', { roomCode, cardId }, (response) => {
+      handleResponse(response, 'Could not select card.')
+    })
   }
 
   function joinMining() {
-    const updated = pendingPlayers.map((p, i) =>
-      i === currentMiner
-        ? { ...p, coins: p.coins - MINING_COST, miningCard: miningChoice.selected, skipNextMining: false }
-        : p
-    )
-
-    setPendingPlayers(updated)
-    nextMiner(currentMiner + 1, updated)
-  }
-
-  function revealAndExecute(basePlayers) {
-    const beforeBalances = basePlayers.map((p) => ({ id: p.id, name: p.name, before: p.coins }))
-
-    let updated = basePlayers.map((p) => ({ ...p }))
-    const logs = []
-    const events = []
-    const visible = [winningCard, ...updated.map((p) => p.transactionCard).filter(Boolean)]
-    const miners = updated
-      .filter((p) => p.active && p.miningCard)
-      .map((p) => ({ ...p, miningScore: score(p.miningCard, visible) }))
-
-    let newWinningCard = winningCard
-    let newBlock = null
-
-    if (miners.length) {
-      let finalists = [...miners].sort((a, b) => b.miningScore - a.miningScore || b.miningCard.value - a.miningCard.value)
-      const bestScore = finalists[0].miningScore
-      finalists = finalists.filter((m) => m.miningScore === bestScore)
-      const bestValue = Math.max(...finalists.map((m) => m.miningCard.value))
-      finalists = finalists.filter((m) => m.miningCard.value === bestValue)
-
-      let miningWinner = finalists[0]
-
-      if (finalists.length > 1) {
-        miningWinner = finalists.map((m) => ({ ...m, tieRoll: rollDice() })).sort((a, b) => b.tieRoll - a.tieRoll)[0]
-      }
-
-      updated = updated.map((p) => p.id === miningWinner.id ? { ...p, coins: p.coins + MINING_REWARD } : p)
-      newWinningCard = miningWinner.miningCard
-      newBlock = {
-        id: `block-${round}-${Date.now()}`,
-        title: `Block ${round}`,
-        miner: miningWinner.name,
-        reward: MINING_REWARD,
-        card: newWinningCard
-      }
-
-      logs.push(`${miningWinner.name} wins mining with ${face(miningWinner.miningCard)} and receives 5 Istoken.`)
-      events.push(`${miningWinner.name} validated the transactions and created a new block.`)
-    } else {
-      logs.push('No player joined mining. No block reward was paid.')
-      events.push('No player joined mining this round.')
-    }
-
-    updated = executeCards(updated, logs)
-    updated = updated.map((p) => p.coins < 0 ? { ...p, active: false } : p)
-
-    const changes = updated.map((p) => {
-      const before = beforeBalances.find((b) => b.id === p.id)?.before ?? p.coins
-      return { id: p.id, name: p.name, before, after: p.coins, difference: p.coins - before }
+    socket.emit('room-join-mining', { roomCode }, (response) => {
+      handleResponse(response, 'Could not join mining.')
     })
+  }
 
-    setPlayers(updated)
-    setPendingPlayers(updated)
-    setWinningCard(newWinningCard)
-    setLedgerChanges(changes)
-
-    if (newBlock) setBlocks((prev) => [newBlock, ...prev])
-
-    addLedger(logs)
-
-    const active = updated.filter((p) => p.active)
-
-    if (active.length <= 1) {
-      setWinner(active[0] ? `${active[0].name} wins because only one player remains.` : 'Game over.')
-      setPhase('game-over')
-      return
-    }
-
-    if (round >= ROUND_LIMIT) {
-      const richest = [...active].sort((a, b) => b.coins - a.coins)[0]
-      setWinner(`${richest.name} wins after ${ROUND_LIMIT} rounds with the most Istoken.`)
-      setPhase('game-over')
-      return
-    }
-
-    setCurrentEvent({
-      title: 'Ledger Confirmation',
-      icon: ledgerIcon,
-      text: events.join(' '),
-      note: 'Shared ledger updated.',
-      privateNote: 'All players must acknowledge the same updated balances before the next round begins.',
-      card: null,
-      roundEnd: true,
-      lesson: 'A blockchain ledger is a shared record. Everyone sees the same balance updates, and the next block continues from this shared state.'
+  function skipMining() {
+    socket.emit('room-skip-mining', { roomCode }, (response) => {
+      handleResponse(response, 'Could not skip mining.')
     })
-
-    setPhase('round-summary')
   }
 
-  function executeCards(basePlayers, logs) {
-    const updated = basePlayers.map((p) => ({ ...p }))
-    const add = (idx, amount) => { updated[idx].coins += amount }
-
-    updated.forEach((player, index) => {
-      if (!player.active || !player.transactionCard) return
-      const card = player.transactionCard
-
-      if (card.effect === 'bankGain') add(index, card.amount)
-      if (card.effect === 'bankLoss') add(index, -card.amount)
-
-      if (card.effect === 'leftPays') {
-        const target = leftIndex(updated, index)
-        if (target >= 0) { add(target, -card.amount); add(index, card.amount) }
-      }
-
-      if (card.effect === 'rightPays') {
-        const target = rightIndex(updated, index)
-        if (target >= 0) { add(target, -card.amount); add(index, card.amount) }
-      }
-
-      if (card.effect === 'payLeft') {
-        const target = leftIndex(updated, index)
-        if (target >= 0) { add(index, -card.amount); add(target, card.amount) }
-      }
-
-      if (card.effect === 'payRight') {
-        const target = rightIndex(updated, index)
-        if (target >= 0) { add(index, -card.amount); add(target, card.amount) }
-      }
-
-      if (card.effect === 'allPay') {
-        updated.forEach((p, i) => {
-          if (i !== index && p.active) { add(i, -card.amount); add(index, card.amount) }
-        })
-      }
-
-      if (card.effect === 'payAll') {
-        updated.forEach((p, i) => {
-          if (i !== index && p.active) { add(index, -card.amount); add(i, card.amount) }
-        })
-      }
-
-      if (card.action === 'jellyfish') updated[index].skipNextMining = true
-
-      if (card.action === 'fire') {
-        updated.forEach((p, i) => {
-          if (i !== index && p.active) { add(i, -1); add(index, 1) }
-        })
-      }
-
-      if (card.action === 'totem') updated[index].blockedForever = true
-
-      logs.push(`${player.name} executes ${card.title}: ${card.text}`)
+  function confirmLedger() {
+    socket.emit('room-confirm-ledger', { roomCode }, (response) => {
+      handleResponse(response, 'Could not confirm ledger.')
     })
-
-    return updated
   }
 
-  function finishRound() {
-    setCurrentEvent(null)
-    setLedgerChanges([])
-    setRound((prev) => prev + 1)
-    setTurnIndex(players.findIndex((p) => p.active))
-    setPhase('ready')
-    setPendingPlayers(null)
-    setMiningChoice(null)
-    setPlayers((prev) => prev.map((p) => ({
-      ...p,
-      transactionCard: null,
-      miningCard: null,
-      blockedThisRound: false,
-      lastRoll: null
-    })))
-  }
-
-  function closeCurrentEvent() {
-    if (phase === 'movement-event') {
-      continueAfterMove()
-      return
-    }
-
-    if (phase === 'round-summary') {
-      finishRound()
-      return
-    }
-
-    setCurrentEvent(null)
-  }
-
-  return (
+    return (
     <div className="app-shell" style={{ backgroundImage: `url(${background})` }}>
       <div className="app-overlay">
         {screen === 'home' && (
@@ -664,40 +303,153 @@ export default function App() {
             <header className="top-bar">
               <div>
                 <p className="eyebrow">Market Island</p>
-                <h1>Treasure Chain Board Game</h1>
+                <h1>Gamified Blockchain Boardgame</h1>
               </div>
+
               <div className="top-stats">
-                <div className="pill-box"><span>Start</span><strong>50 Istoken</strong></div>
-                <div className="pill-box"><span>Mining</span><strong>1 cost / 5 reward</strong></div>
+                <div className="pill-box">
+                  <span>Mode</span>
+                  <strong>Online Room</strong>
+                </div>
+
+                <div className="pill-box">
+                  <span>Players</span>
+                  <strong>2-3</strong>
+                </div>
               </div>
             </header>
 
             <main className="home-layout">
               <section className="panel home-hero">
                 <img src={chestIcon} alt="" className="hero-icon" />
+
                 <h2>Welcome to Market Island</h2>
-                <p>Three local players move, draw hidden cards, mine blocks, and update one shared ledger.</p>
-                <div className="home-buttons">
-                  <button className="primary-btn" onClick={() => setShowSetup(true)}>Start Game</button>
-                  <button className="secondary-btn" onClick={() => setShowRules(true)}>Instructions</button>
-                  <button className="secondary-btn" onClick={() => setShowStory(true)}>Read the Story</button>
+
+                <p>
+                  Players join one room, take turns from different browsers, pick up cards, mine blocks,
+                  and update one shared ledger.
+                </p>
+
+                <div className="multiplayer-panel">
+                  <h3>Online Multiplayer Lobby</h3>
+
+                  <p className="small-note">
+                    Create a room, share the room code, or join an existing room from another browser.
+                  </p>
+
+                  <div className="form-grid">
+                    <label>
+                      Your name
+                      <input
+                        type="text"
+                        placeholder="Enter your name"
+                        value={playerName}
+                        onChange={(event) => setPlayerName(event.target.value)}
+                      />
+                    </label>
+
+                    <div className="home-buttons">
+                      <button className="primary-btn" onClick={createRoom}>
+                        Create Room
+                      </button>
+                    </div>
+
+                    <label>
+                      Room code
+                      <input
+                        type="text"
+                        placeholder="Enter room code"
+                        value={joinCode}
+                        onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                      />
+                    </label>
+
+                    <div className="home-buttons">
+                      <button className="secondary-btn" onClick={joinRoom}>
+                        Join Room
+                      </button>
+                    </div>
+                  </div>
+
+                  {roomError && <p className="room-error">{roomError}</p>}
+
+                  {roomData && (
+                    <div className="room-box">
+                      <h3>Room Code: {roomData.code}</h3>
+
+                      <p>
+                        Players: {roomData.players.length} / {roomData.maxPlayers}
+                      </p>
+
+                      <div className="room-player-list">
+                        {roomData.players.map((player) => (
+                          <div key={player.id} className="room-player-row">
+                            <span style={{ background: player.color }} />
+                            <b>{player.name}</b>
+                            <small>{player.isHost ? 'Host' : 'Joined'}</small>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="home-buttons">
+                        {isHost && (
+                          <button className="primary-btn" onClick={startRoomGame}>
+                            Start Online Game
+                          </button>
+                        )}
+
+                        <button className="secondary-btn" onClick={leaveRoom}>
+                          Leave Room
+                        </button>
+                      </div>
+
+                      {!isHost && <p className="small-note">Waiting for the host to start the game.</p>}
+                    </div>
+                  )}
+
+                  <div className="home-buttons">
+                    <button className="secondary-btn" onClick={() => setShowRules(true)}>
+                      Instructions
+                    </button>
+
+                    <button className="secondary-btn" onClick={() => setShowStory(true)}>
+                      Read the Story
+                    </button>
+                  </div>
                 </div>
               </section>
             </main>
           </>
         )}
 
-        {screen === 'game' && (
+        {screen === 'game' && game && (
           <>
             <header className="top-bar">
               <div>
-                <p className="eyebrow">Market Island</p>
-                <h1>Manual Rule Game</h1>
+                <p className="eyebrow">Room {roomCode}</p>
+                <h1>Market Island Online Game</h1>
               </div>
+
               <div className="top-stats">
-                <div className="pill-box"><span>Round</span><strong>{round}</strong></div>
-                <div className="pill-box"><span>Winning Card</span><strong>{face(winningCard)}</strong></div>
-                <div className="pill-box"><span>Active</span><strong>{activePlayers.length}</strong></div>
+                <div className="pill-box">
+                  <span>Round</span>
+                  <strong>{game.round} / 10</strong>
+                </div>
+
+                <div className="pill-box">
+                  <span>Winning Card</span>
+                  <strong>{face(game.winningCard)}</strong>
+                </div>
+
+                <div className="pill-box">
+                  <span>You are</span>
+                  <strong>{myPlayer?.name || 'Viewer'}</strong>
+                </div>
+
+                <div className="pill-box">
+                  <span>Active</span>
+                  <strong>{activePlayers.length}</strong>
+                </div>
               </div>
             </header>
 
@@ -705,25 +457,90 @@ export default function App() {
               <section className="panel board-panel">
                 <div className="board">
                   {BOARD.map((tile) => (
-                    <div key={tile.id} className={`board-tile tile-${tile.type}`} style={{ gridColumn: tile.pos[0], gridRow: tile.pos[1] }}>
+                    <div
+                      key={tile.id}
+                      className={`board-tile tile-${tile.type}`}
+                      style={{ gridColumn: tile.pos[0], gridRow: tile.pos[1] }}
+                    >
                       <img src={tile.icon} alt="" />
                       <span>{tile.name}</span>
+
                       <div className="pawn-row">
-                        {players.filter((p) => p.active && p.position === tile.id).map((p) => (
-                          <img key={p.id} className="pawn-img" src={PAWNS[p.id]} alt={`${p.label} ${p.name}`} />
-                        ))}
+                        {players
+                          .filter((player) => player.active && player.position === tile.id)
+                          .map((player) => {
+                            const originalIndex = players.findIndex((item) => item.id === player.id)
+
+                            return (
+                              <img
+                                key={player.id}
+                                className="pawn-img"
+                                src={PAWNS[originalIndex + 1]}
+                                alt={player.name}
+                              />
+                            )
+                          })}
                       </div>
                     </div>
                   ))}
 
                   <div className="board-center">
-                    <img src={DICE[diceValue]} alt="" className="dice" />
-                    <h3>{activeTurnPlayer?.active ? `${activeTurnPlayer.name}'s Turn` : 'Next Turn'}</h3>
-                    <p>Winning Card: <b>{face(winningCard)}</b></p>
-                    <p>Roll the dice, move clockwise, then draw a hidden card.</p>
-                    <button className="primary-btn" disabled={phase !== 'ready' || winner} onClick={rollCurrentPlayer}>
-                      Roll Dice
-                    </button>
+                    <img src={DICE[game.diceValue || 1]} alt="" className="dice" />
+
+                    {game.phase === 'movement' && (
+                      <>
+                        <h3>{isMyMovementTurn ? 'Your Turn' : `Waiting for ${currentTurnPlayer?.name || 'player'}`}</h3>
+
+                        <p>
+                          Winning Card: <b>{face(game.winningCard)}</b>
+                        </p>
+
+                        <p>{isMyMovementTurn ? 'Roll the dice to move your pawn.' : 'Only the current player can roll.'}</p>
+
+                        <button className="primary-btn" disabled={!isMyMovementTurn} onClick={rollDice}>
+                          Roll Dice
+                        </button>
+                      </>
+                    )}
+
+                    {game.phase === 'card-reveal' && (
+                      <>
+                        <h3>{isMyCardReveal ? 'Pick Up Your Card' : `Waiting for ${cardOwner?.name || 'player'} to pick up a card`}</h3>
+
+                        <p>{game.currentEvent?.text}</p>
+                      </>
+                    )}
+
+                    {game.phase === 'mining' && (
+                      <>
+                        <h3>{isMyMiningTurn ? 'Your Mining Choice' : `Waiting for ${currentMiner?.name || 'player'}`}</h3>
+
+                        <p>Mining means validating transactions and competing to create the next block.</p>
+                      </>
+                    )}
+
+                    {game.phase === 'ledger-confirmation' && (
+                      <>
+                        <h3>Ledger Confirmation</h3>
+
+                        <p>
+                          {hasConfirmedLedger
+                            ? 'You confirmed the ledger. Waiting for the other active players.'
+                            : 'All balances were updated. Confirm the shared ledger to continue.'}
+                        </p>
+
+                        <button className="primary-btn" disabled={hasConfirmedLedger} onClick={confirmLedger}>
+                          {hasConfirmedLedger ? 'Ledger Confirmed' : 'Confirm Ledger'}
+                        </button>
+                      </>
+                    )}
+
+                    {game.phase === 'game-over' && (
+                      <>
+                        <h3>Game Complete</h3>
+                        <p>{game.winner}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </section>
@@ -731,43 +548,125 @@ export default function App() {
               <aside className="side-stack">
                 <section className="panel">
                   <h2>Players</h2>
+
                   <div className="players-list">
-                    {players.map((p, index) => (
-                      <div key={p.id} className={`player-card ${!p.active ? 'player-out' : ''}`}>
+                    {players.map((player, index) => (
+                      <div key={player.id} className={`player-card ${!player.active ? 'player-out' : ''}`}>
                         <div className="player-head">
-                          <img src={PAWNS[p.id]} alt="" className="player-pawn-small" />
+                          <img src={PAWNS[index + 1]} alt="" className="player-pawn-small" />
+
                           <div>
-                            <strong>{p.label} - {p.colorName}</strong>
-                            <p>{p.name}{index === turnIndex && phase === 'ready' ? ' - current turn' : ''}</p>
+                            <strong>
+                              {player.label} - {player.colorName}
+                            </strong>
+
+                            <p>
+                              {player.name}
+                              {player.id === socket.id ? ' - you' : ''}
+                              {player.id === game.currentTurnId ? ' - current turn' : ''}
+                              {game.phase === 'ledger-confirmation' && game.ledgerConfirmedBy?.includes(player.id)
+                                ? ' - ledger confirmed'
+                                : ''}
+                            </p>
                           </div>
-                          <b>{p.coins}</b>
+
+                          <b>{player.coins}</b>
                         </div>
-                        <small>{p.blockedForever ? 'Totem: cannot mine' : p.skipNextMining ? 'Jellyfish: skips next mining' : 'Can mine if funded'}</small>
+
+                        <small>
+                          {player.blockedForever
+                            ? 'Totem: cannot mine'
+                            : player.skipNextMining
+                              ? 'Jellyfish: skips next mining'
+                              : 'Can mine if funded'}
+                        </small>
                       </div>
                     ))}
                   </div>
                 </section>
 
+                {game.currentEvent && (
+                  <section className="panel">
+                    <h2>Last Action</h2>
+
+                    <div className="rule-card">
+                      <b>{game.currentEvent.title}</b>
+                      <p>{game.currentEvent.text}</p>
+
+                      {game.phase !== 'card-reveal' && game.currentEvent.privateNote && (
+                        <p>{game.currentEvent.privateNote}</p>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {game.phase === 'ledger-confirmation' && game.ledgerChanges?.length > 0 && (
+                  <section className="panel">
+                    <h2>
+                      <img src={ledgerIcon} alt="" /> Ledger Update
+                    </h2>
+
+                    <div className="ledger-confirm-list">
+                      {game.ledgerChanges.map((change) => (
+                        <div key={change.id} className="ledger-confirm-row">
+                          <span>{change.name}</span>
+                          <b>
+                            {change.before} → {change.after}
+                          </b>
+                          <small>
+                            {change.difference >= 0 ? '+' : ''}
+                            {change.difference}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
                 <section className="panel">
-                  <h2><img src={ledgerIcon} alt="" /> Shared Scoreboard / Ledger</h2>
+                  <h2>
+                    <img src={ledgerIcon} alt="" /> Shared Scoreboard / Ledger
+                  </h2>
+
                   <div className="shared-scoreboard">
-                    {players.map((p) => (
-                      <div key={p.id} className="score-row">
-                        <div className="score-name"><img src={PAWNS[p.id]} alt="" /><span>{p.name}</span></div>
-                        <div className="score-track"><span className="marker" style={{ left: `${Math.min(100, Math.max(0, p.coins))}%`, background: p.color }} /></div>
-                        <b>{p.coins}</b>
+                    {players.map((player, index) => (
+                      <div key={player.id} className="score-row">
+                        <div className="score-name">
+                          <img src={PAWNS[index + 1]} alt="" />
+                          <span>{player.name}</span>
+                        </div>
+
+                        <div className="score-track">
+                          <span
+                            className="marker"
+                            style={{
+                              left: `${Math.min(100, Math.max(0, player.coins))}%`,
+                              background: player.color
+                            }}
+                          />
+                        </div>
+
+                        <b>{player.coins}</b>
                       </div>
                     ))}
                   </div>
                 </section>
 
                 <section className="panel">
-                  <h2><img src={chainIcon} alt="" /> Blockchain</h2>
+                  <h2>
+                    <img src={chainIcon} alt="" /> Blockchain
+                  </h2>
+
                   <div className="blocks-list">
-                    {blocks.map((b) => (
-                      <div key={b.id} className="block-card">
+                    {game.blocks.map((block) => (
+                      <div key={block.id} className="block-card">
                         <img src={chainIcon} alt="" />
-                        <div><strong>{b.title}</strong><p>Miner: {b.miner}</p><p>Card: {face(b.card)}</p></div>
+
+                        <div>
+                          <strong>{block.title}</strong>
+                          <p>Miner: {block.miner}</p>
+                          <p>Card: {face(block.card)}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -777,37 +676,161 @@ export default function App() {
           </>
         )}
 
-        {showSetup && (
+        {game?.phase === 'card-reveal' && game?.currentEvent && isMyCardReveal && (
           <div className="modal-overlay">
             <div className="modal-card">
-              <h2>Choose 3 Local Players</h2>
-              <div className="form-grid">
-                {PLAYERS.map((p, i) => (
-                  <label key={p.id}>
-                    {p.label} - {p.colorName}
-                    <input value={names[i]} onChange={(e) => setNames(names.map((n, idx) => idx === i ? e.target.value : n))} />
-                  </label>
-                ))}
+              <div className="lesson-card">
+                <b>Blockchain hint</b>
+                <p>{game.currentEvent.lesson}</p>
               </div>
-              <button className="primary-btn" onClick={startGame}>Begin Game</button>
-              <button className="secondary-btn" onClick={() => setShowSetup(false)}>Close</button>
+
+              <h2>Pick Up Your Transaction Card</h2>
+
+              <p>{game.currentEvent.text}</p>
+
+              <button className="click-card" onClick={() => setCardRevealed(true)}>
+                <img
+                  src={getTransactionCardBack(game.currentEvent.card)}
+                  alt=""
+                  className="card-back-only"
+                />
+
+                {!cardRevealed && <span>Click card to reveal</span>}
+              </button>
+
+              {cardRevealed && (
+                <div className="rule-card">
+                  <b>{game.currentEvent.note}</b>
+                  <p>{game.currentEvent.privateNote}</p>
+                </div>
+              )}
+
+              <button className="primary-btn" disabled={!cardRevealed} onClick={continueAfterCard}>
+                Keep Card and Continue
+              </button>
             </div>
           </div>
         )}
 
-        {showRules && (
+        {game?.phase === 'mining' && game?.miningOffer && isMyMiningTurn && (
+          <div className="modal-overlay">
+            <div className="modal-card">
+              <div className="lesson-card">
+                <b>Mining explained</b>
+                <p>Mining is not digging. It means validating transactions and competing to create the next block.</p>
+              </div>
+
+              <h2>Your Mining Choice</h2>
+
+              {game.miningOffer.blocked ? (
+                <>
+                  <div className="rule-card">
+                    <b>Cannot Mine</b>
+                    <p>{game.miningOffer.reason}</p>
+                  </div>
+
+                  <button className="primary-btn" onClick={skipMining}>
+                    Continue
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="validation-table">
+                    <div>
+                      <small>Previous Winning Card</small>
+                      <strong>{face(game.winningCard)}</strong>
+                    </div>
+
+                    <div>
+                      <small>Your mining card</small>
+                      <strong>{face(game.miningOffer.selected)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="card-choice-grid">
+                    {game.miningOffer.cards.map((card) => (
+                      <button
+                        key={card.id}
+                        className={`mining-card ${game.miningOffer.selected?.id === card.id ? 'selected-mining-card' : ''}`}
+                        onClick={() => selectMiningCard(card.id)}
+                      >
+                        <span>{face(card)}</span>
+                        <small>{game.miningOffer.selected?.id === card.id ? 'Selected' : 'Click to select'}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button className="primary-btn" onClick={joinMining}>
+                    Pay 1 and Mine
+                  </button>
+
+                  <button className="secondary-btn" onClick={skipMining}>
+                    Skip Mining
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+                {showRules && (
           <div className="modal-overlay">
             <div className="modal-card wide">
               <h2>Rules</h2>
+
               <div className="rules-scroll">
-                <div className="rule-card"><b>Start</b><p>Each player starts with 50 Istoken. The first Winning Card is drawn from the standard deck.</p></div>
-                <div className="rule-card"><b>Movement</b><p>Players take turns. Roll the dice, move clockwise, and draw the card type shown by the square.</p></div>
-                <div className="rule-card"><b>Hidden Cards</b><p>Cards are hidden until validation. Click a card to inspect it, then keep it for the reveal phase.</p></div>
-                <div className="rule-card"><b>Mining</b><p>Mining means validating the round. A player pays 1 Istoken to compete for the block reward.</p></div>
-                <div className="rule-card"><b>Scoring</b><p>Mining cards score 1 point for each matching rank and 1 point for each matching suit against the Winning Card and revealed cards.</p></div>
-                <div className="rule-card"><b>Ledger</b><p>After each round, everyone confirms the same updated ledger before the game continues.</p></div>
+                <div className="rule-card">
+                  <b>Start</b>
+                  <p>
+                    Each player starts with 50 Istoken. The host starts the online room game.
+                    The game lasts 10 rounds.
+                  </p>
+                </div>
+
+                <div className="rule-card">
+                  <b>Movement</b>
+                  <p>
+                    Only the player whose turn it is can roll the dice. After rolling, that player
+                    moves clockwise and picks up a transaction card from the square they landed on.
+                  </p>
+                </div>
+
+                <div className="rule-card">
+                  <b>Card pickup</b>
+                  <p>
+                    The card is revealed only to the player who picked it up. The card is kept for
+                    the round, but its effect is applied after the mining phase.
+                  </p>
+                </div>
+
+                <div className="rule-card">
+                  <b>Mining</b>
+                  <p>
+                    During mining, each active player gets a chance to pay 1 Istoken and compete to
+                    validate the round. The mining winner receives 5 Istoken and creates the next block.
+                  </p>
+                </div>
+
+                <div className="rule-card">
+                  <b>Ledger confirmation</b>
+                  <p>
+                    After every round, all active players must confirm the shared ledger. The next round
+                    starts only after everyone confirms.
+                  </p>
+                </div>
+
+                <div className="rule-card">
+                  <b>Winning</b>
+                  <p>
+                    The game ends after round 10. The active player with the most Istoken wins.
+                    The game can also end earlier if only one active player remains.
+                  </p>
+                </div>
               </div>
-              <button className="primary-btn" onClick={() => setShowRules(false)}>Close</button>
+
+              <button className="primary-btn" onClick={() => setShowRules(false)}>
+                Close
+              </button>
             </div>
           </div>
         )}
@@ -815,129 +838,33 @@ export default function App() {
         {showStory && (
           <div className="modal-overlay">
             <div className="story-modal">
-              <button className="close-btn" onClick={() => setShowStory(false)}>×</button>
-              <img src={STORY_IMAGES[storyIndex]} alt="" />
-              <div className="story-controls">
-                <button className="secondary-btn" disabled={storyIndex === 0} onClick={() => setStoryIndex((i) => i - 1)}>Previous</button>
-                <span>{storyIndex + 1} / {STORY_IMAGES.length}</span>
-                <button className="primary-btn" disabled={storyIndex === STORY_IMAGES.length - 1} onClick={() => setStoryIndex((i) => i + 1)}>Next</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentEvent && (
-          <div className="modal-overlay">
-            <div className="modal-card">
-              <div className="lesson-card">
-                <b>Blockchain hint</b>
-                <p>{currentEvent.lesson || 'The game state changes only after everyone confirms the result.'}</p>
-              </div>
-
-              <h2>{currentEvent.title}</h2>
-              <img src={currentEvent.icon} alt="" className="event-icon" />
-              <p>{currentEvent.text}</p>
-
-              {currentEvent.card && (
-                <>
-                  <button className="click-card" onClick={() => setCardRevealed(true)}>
-                    <img src={CARD_BACKS[currentEvent.card.kind]} alt="" className="card-back-only" />
-                    {!cardRevealed && <span>Click card to reveal</span>}
-                  </button>
-
-                  {cardRevealed && (
-                    <div className="rule-card">
-                      <b>{currentEvent.note}</b>
-                      <p>{currentEvent.privateNote}</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {!currentEvent.card && (
-                <>
-                  <div className="rule-card"><b>{currentEvent.note}</b><p>{currentEvent.privateNote}</p></div>
-                  {ledgerChanges.length > 0 && (
-                    <div className="ledger-confirm-list">
-                      {ledgerChanges.map((change) => (
-                        <div key={change.id} className="ledger-confirm-row">
-                          <span>{change.name}</span>
-                          <b>{change.before} → {change.after}</b>
-                          <small>{change.difference >= 0 ? '+' : ''}{change.difference}</small>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-
-              <button className="primary-btn" disabled={currentEvent.card && !cardRevealed} onClick={closeCurrentEvent}>
-                {phase === 'round-summary' ? 'Confirm Ledger and Start Next Round' : 'Continue'}
+              <button className="close-btn" onClick={() => setShowStory(false)}>
+                ×
               </button>
-            </div>
-          </div>
-        )}
 
-        {phase === 'mining' && miner && !currentEvent && (
-          <div className="modal-overlay">
-            <div className="modal-card">
-              <div className="lesson-card">
-                <b>Mining explained</b>
-                <p>Mining is not digging. In blockchain, mining means validating transactions and competing to create the next block.</p>
+              <img src={STORY_IMAGES[storyIndex]} alt="" />
+
+              <div className="story-controls">
+                <button
+                  className="secondary-btn"
+                  disabled={storyIndex === 0}
+                  onClick={() => setStoryIndex((index) => index - 1)}
+                >
+                  Previous
+                </button>
+
+                <span>
+                  {storyIndex + 1} / {STORY_IMAGES.length}
+                </span>
+
+                <button
+                  className="primary-btn"
+                  disabled={storyIndex === STORY_IMAGES.length - 1}
+                  onClick={() => setStoryIndex((index) => index + 1)}
+                >
+                  Next
+                </button>
               </div>
-
-              <h2>{miner.label} / {miner.colorName}: {miner.name}</h2>
-
-              {miningReason(miner) ? (
-                <>
-                  <div className="rule-card"><b>Cannot Mine</b><p>{miningReason(miner)}</p></div>
-                  <button className="primary-btn" onClick={skipMining}>Continue</button>
-                </>
-              ) : (
-                <>
-                  <div className="validation-table">
-                    <div>
-                      <small>Previous Winning Card</small>
-                      <strong>{face(winningCard)}</strong>
-                    </div>
-                    <div>
-                      <small>Your hidden card</small>
-                      <img src={CARD_BACKS[miner.transactionCard.kind]} alt="" />
-                    </div>
-                    <div>
-                      <small>Your mining card</small>
-                      <strong>{face(miningChoice?.selected)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="rule-card">
-                    <b>Your hidden card</b>
-                    <p>{miner.transactionCard.title}: {miner.transactionCard.text} ({face(miner.transactionCard)})</p>
-                  </div>
-
-                  <div className="card-choice-grid">
-                    {miningChoice?.cards.map((card, i) => (
-                      <button key={i} className={`mining-card ${miningChoice.selected === card ? 'selected-mining-card' : ''}`} onClick={() => setMiningChoice({ ...miningChoice, selected: card })}>
-                        <span>{face(card)}</span>
-                        <small>{miningChoice.selected === card ? 'Selected' : 'Click to select'}</small>
-                      </button>
-                    ))}
-                  </div>
-
-                  <button className="primary-btn" onClick={joinMining}>Pay 1 and Mine</button>
-                  <button className="secondary-btn" onClick={skipMining}>Skip Mining</button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {winner && (
-          <div className="modal-overlay">
-            <div className="modal-card">
-              <h2>Game Complete</h2>
-              <p>{winner}</p>
-              <button className="primary-btn" onClick={() => setScreen('home')}>Back Home</button>
             </div>
           </div>
         )}

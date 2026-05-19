@@ -1,9 +1,16 @@
 import express from 'express'
 import cors from 'cors'
 import crypto from 'crypto'
+import http from 'http'
+import { Server } from 'socket.io'
 
 const app = express()
 const PORT = 3001
+const httpServer = http.createServer(app)
+
+const io = new Server(httpServer, {
+  cors: { origin: '*' }
+})
 
 app.use(cors())
 app.use(express.json())
@@ -11,694 +18,913 @@ app.use(express.json())
 const START_BALANCE = 50
 const MINING_COST = 1
 const MINING_REWARD = 5
-const BOARD_SIZE = 20
+const MAX_ROOM_PLAYERS = 3
+const ROUND_LIMIT = 10
 
 const BOARD_TILES = [
-  { type: 'start', label: 'Start' },
-  { type: 'income', label: 'Income' },
-  { type: 'expense', label: 'Expense' },
-  { type: 'action', label: 'Action' },
-  { type: 'income', label: 'Income' },
-  { type: 'jellyfish', label: 'Jellyfish' },
-  { type: 'expense', label: 'Expense' },
-  { type: 'action', label: 'Action' },
-  { type: 'income', label: 'Income' },
-  { type: 'expense', label: 'Expense' },
-  { type: 'fire', label: 'Fire' },
-  { type: 'income', label: 'Income' },
-  { type: 'action', label: 'Action' },
-  { type: 'expense', label: 'Expense' },
-  { type: 'income', label: 'Income' },
-  { type: 'totem', label: 'Totem' },
-  { type: 'expense', label: 'Expense' },
-  { type: 'action', label: 'Action' },
-  { type: 'income', label: 'Income' },
-  { type: 'expense', label: 'Expense' }
+  { id: 0, type: 'start', label: 'Start' },
+  { id: 1, type: 'income', label: 'Income' },
+  { id: 2, type: 'expense', label: 'Expense' },
+  { id: 3, type: 'action', label: 'Action' },
+  { id: 4, type: 'jellyfish', label: 'Jellyfish' },
+  { id: 5, type: 'income', label: 'Income' },
+  { id: 6, type: 'action', label: 'Action' },
+  { id: 7, type: 'expense', label: 'Expense' },
+  { id: 8, type: 'fire', label: 'Fire' },
+  { id: 9, type: 'income', label: 'Income' },
+  { id: 10, type: 'expense', label: 'Expense' },
+  { id: 11, type: 'action', label: 'Action' },
+  { id: 12, type: 'totem', label: 'Totem' },
+  { id: 13, type: 'expense', label: 'Expense' },
+  { id: 14, type: 'income', label: 'Income' },
+  { id: 15, type: 'action', label: 'Action' }
 ]
 
-const PLAYER_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b']
-const SUITS = ['hearts', 'diamonds', 'clubs', 'spades']
+const PLAYER_COLORS = ['#7288ff', '#6ed9bd', '#c79cff']
+const PLAYER_COLOR_NAMES = ['Blue', 'Mint', 'Lilac']
+const SUITS = ['clubs', 'diamonds', 'hearts', 'spades']
+const SUIT_SYMBOL = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' }
+
 const RANKS = [
-  { rank: '2', value: 2 },
-  { rank: '3', value: 3 },
-  { rank: '4', value: 4 },
-  { rank: '5', value: 5 },
-  { rank: '6', value: 6 },
-  { rank: '7', value: 7 },
-  { rank: '8', value: 8 },
-  { rank: '9', value: 9 },
-  { rank: '10', value: 10 },
-  { rank: 'J', value: 11 },
-  { rank: 'Q', value: 12 },
+  { rank: 'A', value: 14 },
   { rank: 'K', value: 13 },
-  { rank: 'A', value: 14 }
+  { rank: 'Q', value: 12 },
+  { rank: 'J', value: 11 },
+  { rank: '10', value: 10 },
+  { rank: '9', value: 9 },
+  { rank: '8', value: 8 },
+  { rank: '7', value: 7 },
+  { rank: '6', value: 6 },
+  { rank: '5', value: 5 },
+  { rank: '4', value: 4 },
+  { rank: '3', value: 3 },
+  { rank: '2', value: 2 }
 ]
 
 const INCOME_CARDS = [
-  { id: 'i1', category: 'income', title: 'Fishing Reward', amount: 4, mode: 'bank', suit: 'hearts', rank: '4' },
-  { id: 'i2', category: 'income', title: 'Fruit Trade', amount: 3, mode: 'bank', suit: 'clubs', rank: '3' },
-  { id: 'i3', category: 'income', title: 'Tool Repair Payment', amount: 5, mode: 'bank', suit: 'diamonds', rank: '5' },
-  { id: 'i4', category: 'income', title: 'Receive from Left', amount: 4, mode: 'leftPays', suit: 'spades', rank: '4' },
-  { id: 'i5', category: 'income', title: 'Receive from Right', amount: 4, mode: 'rightPays', suit: 'hearts', rank: '6' },
-  { id: 'i6', category: 'income', title: 'Community Bonus', amount: 2, mode: 'allPay', suit: 'clubs', rank: '2' }
+  { id: 'i1', kind: 'income', title: 'Shell Sale', text: 'Receive 4 Istoken from the player on your left.', effect: 'leftPays', amount: 4, suit: 'hearts', rank: '4' },
+  { id: 'i2', kind: 'income', title: 'Fishing Profit', text: 'Receive 4 Istoken from the player on your right.', effect: 'rightPays', amount: 4, suit: 'clubs', rank: '4' },
+  { id: 'i3', kind: 'income', title: 'Pearl Trade', text: 'Receive 5 Istoken from the bank.', effect: 'bankGain', amount: 5, suit: 'diamonds', rank: '5' },
+  { id: 'i4', kind: 'income', title: 'Market Bonus', text: 'Each other player gives you 2 Istoken.', effect: 'allPay', amount: 2, suit: 'spades', rank: '2' }
 ]
 
 const EXPENSE_CARDS = [
-  { id: 'e1', category: 'expense', title: 'Broken Net', amount: 3, mode: 'bank', suit: 'diamonds', rank: '3' },
-  { id: 'e2', category: 'expense', title: 'Storm Damage', amount: 4, mode: 'bank', suit: 'spades', rank: '4' },
-  { id: 'e3', category: 'expense', title: 'Pay Left Player', amount: 5, mode: 'leftReceives', suit: 'hearts', rank: '5' },
-  { id: 'e4', category: 'expense', title: 'Pay Right Player', amount: 5, mode: 'rightReceives', suit: 'clubs', rank: '5' },
-  { id: 'e5', category: 'expense', title: 'Shared Camp Cost', amount: 2, mode: 'allReceive', suit: 'diamonds', rank: '2' },
-  { id: 'e6', category: 'expense', title: 'Lost Supplies', amount: 3, mode: 'bank', suit: 'spades', rank: '6' }
+  { id: 'e1', kind: 'expense', title: 'Boat Repair', text: 'Pay 5 Istoken to the player on your left.', effect: 'payLeft', amount: 5, suit: 'hearts', rank: '5' },
+  { id: 'e2', kind: 'expense', title: 'Broken Tools', text: 'Pay 5 Istoken to the player on your right.', effect: 'payRight', amount: 5, suit: 'clubs', rank: '5' },
+  { id: 'e3', kind: 'expense', title: 'Storm Damage', text: 'Pay 4 Istoken to the bank.', effect: 'bankLoss', amount: 4, suit: 'diamonds', rank: '4' },
+  { id: 'e4', kind: 'expense', title: 'Shared Cost', text: 'Pay 2 Istoken to each other player.', effect: 'payAll', amount: 2, suit: 'spades', rank: '2' }
 ]
 
 const ACTION_CARDS = [
-  { id: 'a1', category: 'action', actionType: 'jellyfish', title: 'Jellyfish', text: 'Skip next mining round.', suit: 'hearts', rank: 'J' },
-  { id: 'a2', category: 'action', actionType: 'fire', title: 'Fire', text: 'Each other player gives you 1 Istoken.', suit: 'diamonds', rank: 'Q' },
-  { id: 'a3', category: 'action', actionType: 'totem', title: 'Totem', text: 'You become permanently blocked from mining.', suit: 'clubs', rank: 'K' },
-  { id: 'a4', category: 'action', actionType: 'axe', title: 'Axe', text: 'Draw two mining cards and keep the better one.', suit: 'spades', rank: 'A' }
+  { id: 'a1', kind: 'action', title: 'Jellyfish', text: 'Skip the next mining round.', action: 'jellyfish', suit: 'hearts', rank: 'J' },
+  { id: 'a2', kind: 'action', title: 'Fire', text: 'Each other player gives you 1 Istoken.', action: 'fire', suit: 'diamonds', rank: 'Q' },
+  { id: 'a3', kind: 'action', title: 'Totem', text: 'You cannot mine for the rest of the game.', action: 'totem', suit: 'clubs', rank: 'K' },
+  { id: 'a4', kind: 'action', title: 'Axe', text: 'Draw two standard cards and choose one during mining.', action: 'axe', suit: 'spades', rank: 'A' }
 ]
 
-let game = null
+const rooms = {}
 
 function shuffle(array) {
   const copy = [...array]
+
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[copy[i], copy[j]] = [copy[j], copy[i]]
   }
+
   return copy
 }
 
-function createStandardDeck() {
-  const deck = []
-  for (const suit of SUITS) {
-    for (const item of RANKS) {
-      deck.push({
-        id: `${item.rank}-${suit}`,
-        suit,
-        rank: item.rank,
-        value: item.value,
-        category: 'standard',
-        title: `${item.rank} of ${suit}`
-      })
-    }
-  }
-  return shuffle(deck)
-}
+function createRoomCode() {
+  let code = ''
 
-function drawFromDeck(deck, refillFactory) {
-  if (deck.length > 0) {
-    return { card: deck[0], nextDeck: deck.slice(1) }
-  }
-  const refreshed = refillFactory()
-  return { card: refreshed[0], nextDeck: refreshed.slice(1) }
+  do {
+    code = Math.random().toString(36).slice(2, 8).toUpperCase()
+  } while (rooms[code])
+
+  return code
 }
 
 function createHash(data) {
   return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex')
 }
 
-function createGenesisBlock() {
-  const blockData = {
-    index: 0,
-    round: 0,
-    timestamp: new Date().toISOString(),
-    previousHash: '0',
-    miner: 'Genesis',
-    transactions: [],
-    balances: {}
-  }
-  return {
-    ...blockData,
-    hash: createHash(blockData)
-  }
+function face(card) {
+  if (!card) return '—'
+  return `${card.rank}${SUIT_SYMBOL[card.suit] || ''}`
 }
 
-function buildPlayer(id, name, color, isHuman = false) {
+function createStandardDeck() {
+  return shuffle(
+    SUITS.flatMap((suit) =>
+      RANKS.map((item) => ({
+        id: `${item.rank}-${suit}`,
+        kind: 'standard',
+        rank: item.rank,
+        suit,
+        value: item.value,
+        title: `${item.rank}${SUIT_SYMBOL[suit]}`
+      }))
+    )
+  )
+}
+
+function drawFromDeck(deck, fallback) {
+  if (deck.length > 0) {
+    return { card: deck[0], deck: deck.slice(1) }
+  }
+
+  const refreshed = fallback()
+  return { card: refreshed[0], deck: refreshed.slice(1) }
+}
+
+function buildRoomPlayer(socketPlayer, index) {
   return {
-    id,
-    name,
-    color,
-    isHuman,
+    id: socketPlayer.id,
+    name: socketPlayer.name,
+    color: PLAYER_COLORS[index],
+    label: `Player ${index + 1}`,
+    colorName: PLAYER_COLOR_NAMES[index],
+    coins: START_BALANCE,
     position: 0,
-    istokens: START_BALANCE,
-    currentCard: null,
-    miningCard: null,
-    miningScore: null,
-    skipNextMining: false,
-    blockedThisRound: false,
-    permanentlyBlocked: false,
     active: true,
-    lastDice: null
+    skipNextMining: false,
+    blockedForever: false,
+    blockedThisRound: false,
+    transactionCard: null,
+    miningCard: null,
+    lastRoll: null
   }
 }
 
-function leftIndex(players, index) {
-  return (index - 1 + players.length) % players.length
-}
-
-function rightIndex(players, index) {
-  return (index + 1) % players.length
-}
-
-function calculateMiningScore(miningCard, visibleCards) {
-  let score = 0
-  for (const card of visibleCards) {
-    if (!card) continue
-    if (card.rank && card.rank === miningCard.rank) score += 1
-    if (card.suit && card.suit === miningCard.suit) score += 1
+function publicRoom(room) {
+  return {
+    code: room.code,
+    hostId: room.hostId,
+    status: room.status,
+    maxPlayers: MAX_ROOM_PLAYERS,
+    players: room.players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      color: player.color,
+      isHost: player.id === room.hostId
+    })),
+    game: room.game ? publicGame(room.game) : null
   }
-  return score
 }
 
-function getLedger() {
-  const ledger = {}
-  for (const player of game.players) {
-    ledger[player.name] = player.istokens
-  }
-  return ledger
-}
-
-function sanitizeState() {
+function publicGame(game) {
   return {
     round: game.round,
     phase: game.phase,
-    boardTiles: BOARD_TILES,
     players: game.players,
+    currentTurnId: game.players[game.currentTurnIndex]?.id || null,
+    currentMinerId: game.players[game.currentMinerIndex]?.id || null,
+    diceValue: game.diceValue,
     winningCard: game.winningCard,
-    chain: game.chain,
-    ledger: getLedger(),
-    gameOver: game.gameOver,
-    winnerName: game.winnerName,
-    lastRound: game.lastRound
+    blocks: game.blocks,
+    ledger: game.ledger,
+    currentEvent: game.currentEvent,
+    miningOffer: game.miningOffer,
+    ledgerChanges: game.ledgerChanges,
+    ledgerConfirmedBy: game.ledgerConfirmedBy,
+    winner: game.winner
   }
 }
 
-function resetRoundFields() {
-  game.players = game.players.map((player) => ({
-    ...player,
-    currentCard: null,
-    miningCard: null,
-    miningScore: null,
-    blockedThisRound: false,
-    lastDice: null
-  }))
-}
-
-function moveAndDraw(playerId, dice) {
-  const playerIndex = game.players.findIndex((player) => player.id === playerId)
-  const player = game.players[playerIndex]
-
-  if (!player || !player.active) return null
-
-  let newPosition = player.position
-  let crossedStart = false
-
-  for (let step = 0; step < dice; step += 1) {
-    newPosition = (newPosition + 1) % BOARD_SIZE
-    if (newPosition === 0) crossedStart = true
-  }
-
-  player.position = newPosition
-  player.lastDice = dice
-
-  if (crossedStart) {
-    player.istokens += 4
-  }
-
-  const tile = BOARD_TILES[newPosition]
-  let drawnCard = null
-
-  if (tile.type === 'income') {
-    const drawn = drawFromDeck(game.incomeDeck, () => shuffle(INCOME_CARDS))
-    game.incomeDeck = drawn.nextDeck
-    drawnCard = drawn.card
-  }
-
-  if (tile.type === 'expense') {
-    const drawn = drawFromDeck(game.expenseDeck, () => shuffle(EXPENSE_CARDS))
-    game.expenseDeck = drawn.nextDeck
-    drawnCard = drawn.card
-  }
-
-  if (tile.type === 'action') {
-    const drawn = drawFromDeck(game.actionDeck, () => shuffle(ACTION_CARDS))
-    game.actionDeck = drawn.nextDeck
-    drawnCard = drawn.card
-  }
-
-  if (tile.type === 'jellyfish') {
-    const drawn = drawFromDeck(game.expenseDeck, () => shuffle(EXPENSE_CARDS))
-    game.expenseDeck = drawn.nextDeck
-    drawnCard = drawn.card
-    player.istokens -= 1
-  }
-
-  if (tile.type === 'fire') {
-    const drawn = drawFromDeck(game.incomeDeck, () => shuffle(INCOME_CARDS))
-    game.incomeDeck = drawn.nextDeck
-    drawnCard = drawn.card
-    player.istokens += 1
-  }
-
-  if (tile.type === 'totem') {
-    const drawn = drawFromDeck(game.actionDeck, () => shuffle(ACTION_CARDS))
-    game.actionDeck = drawn.nextDeck
-    drawnCard = drawn.card
-    player.blockedThisRound = true
-  }
-
-  if (tile.type === 'start') {
-    const drawn = drawFromDeck(game.actionDeck, () => shuffle(ACTION_CARDS))
-    game.actionDeck = drawn.nextDeck
-    drawnCard = drawn.card
-  }
-
-  player.currentCard = drawnCard
-  game.players[playerIndex] = player
+function createRoomGame(room) {
+  const standardDeck = createStandardDeck()
+  const firstWinningCard = standardDeck[0]
 
   return {
-    name: player.name,
-    dice,
-    tile: tile.label,
-    card: drawnCard
+    round: 1,
+    phase: 'movement',
+    players: room.players.map((player, index) => buildRoomPlayer(player, index)),
+    currentTurnIndex: 0,
+    currentMinerIndex: 0,
+    diceValue: 1,
+    winningCard: firstWinningCard,
+    standardDeck: standardDeck.slice(1),
+    incomeDeck: shuffle(Array.from({ length: 26 }, (_, i) => INCOME_CARDS[i % INCOME_CARDS.length])),
+    expenseDeck: shuffle(Array.from({ length: 26 }, (_, i) => EXPENSE_CARDS[i % EXPENSE_CARDS.length])),
+    actionDeck: shuffle(Array.from({ length: 54 }, (_, i) => ACTION_CARDS[i % ACTION_CARDS.length])),
+    blocks: [
+      {
+        id: 'genesis',
+        title: 'Genesis Block',
+        miner: 'System',
+        reward: 0,
+        card: firstWinningCard,
+        hash: createHash({ index: 0, card: firstWinningCard })
+      }
+    ],
+    ledger: [
+      `Initial Winning Card is ${face(firstWinningCard)}.`,
+      'All players start with 50 Istoken.',
+      'The shared scoreboard represents the synchronized blockchain ledger.'
+    ],
+    currentEvent: null,
+    miningOffer: null,
+    ledgerChanges: [],
+    ledgerConfirmedBy: [],
+    winner: ''
   }
 }
 
-function drawMiningCard(player) {
-  const firstDraw = drawFromDeck(game.standardDeck, createStandardDeck)
-  game.standardDeck = firstDraw.nextDeck
-  let chosen = firstDraw.card
-
-  if (player.currentCard?.actionType === 'axe') {
-    const secondDraw = drawFromDeck(game.standardDeck, createStandardDeck)
-    game.standardDeck = secondDraw.nextDeck
-    chosen = [firstDraw.card, secondDraw.card].sort((a, b) => b.value - a.value)[0]
+function nextActiveIndex(players, fromIndex) {
+  for (let i = fromIndex + 1; i < players.length; i += 1) {
+    if (players[i].active) return i
   }
 
-  return chosen
+  return -1
 }
 
-function adjustBalance(playerId, amount) {
-  const player = game.players.find((item) => item.id === playerId)
-  if (player) {
-    player.istokens += amount
+function firstActiveIndex(players) {
+  return players.findIndex((player) => player.active)
+}
+
+function leftIndex(players, index) {
+  for (let i = 1; i < players.length; i += 1) {
+    const target = (index - i + players.length) % players.length
+    if (players[target].active) return target
+  }
+
+  return -1
+}
+
+function rightIndex(players, index) {
+  for (let i = 1; i < players.length; i += 1) {
+    const target = (index + i) % players.length
+    if (players[target].active) return target
+  }
+
+  return -1
+}
+
+function addLedger(game, items) {
+  game.ledger = [...items.reverse(), ...game.ledger].slice(0, 80)
+}
+
+function drawCardForTile(game, tile) {
+  if (tile.type === 'income' || tile.type === 'fire') {
+    const result = drawFromDeck(game.incomeDeck, () => shuffle(INCOME_CARDS))
+    game.incomeDeck = result.deck
+    return result.card
+  }
+
+  if (tile.type === 'expense' || tile.type === 'jellyfish') {
+    const result = drawFromDeck(game.expenseDeck, () => shuffle(EXPENSE_CARDS))
+    game.expenseDeck = result.deck
+    return result.card
+  }
+
+  const result = drawFromDeck(game.actionDeck, () => shuffle(ACTION_CARDS))
+  game.actionDeck = result.deck
+  return result.card
+}
+
+function movePlayer(player, roll) {
+  let position = player.position
+  let crossedStart = false
+
+  for (let i = 0; i < roll; i += 1) {
+    position = (position + 1) % BOARD_TILES.length
+    if (position === 0) crossedStart = true
+  }
+
+  return { ...player, position, crossedStart, lastRoll: roll }
+}
+
+function miningReason(player) {
+  if (!player.active) return 'This player is disqualified.'
+  if (player.skipNextMining) return 'Jellyfish effect: this player must skip this mining round.'
+  if (player.blockedForever) return 'Totem effect: this player can no longer participate in mining.'
+  if (player.blockedThisRound) return 'Totem corner: this player cannot mine this round.'
+  if (player.coins < MINING_COST) return 'This player does not have enough Istoken to pay the mining cost.'
+  return ''
+}
+
+function drawMiningOffer(game, player) {
+  const count = player.transactionCard?.action === 'axe' ? 2 : 1
+  const cards = []
+
+  for (let i = 0; i < count; i += 1) {
+    const result = drawFromDeck(game.standardDeck, createStandardDeck)
+    game.standardDeck = result.deck
+    cards.push(result.card)
+  }
+
+  return {
+    playerId: player.id,
+    cards,
+    selected: cards[0],
+    blocked: false,
+    reason: ''
   }
 }
 
-function executeCardEffects(roundEvents, transactions) {
-  for (let index = 0; index < game.players.length; index += 1) {
-    const player = game.players[index]
-    if (!player.active || !player.currentCard) continue
+function prepareMiningOffer(game) {
+  const player = game.players[game.currentMinerIndex]
 
-    const card = player.currentCard
+  if (!player) return
 
-    if (card.category === 'income') {
-      if (card.mode === 'bank') {
-        adjustBalance(player.id, card.amount)
-        roundEvents.push(`${player.name} received ${card.amount} Istokens from the bank.`)
-        transactions.push({ type: 'income', from: 'Bank', to: player.name, amount: card.amount, reason: card.title })
-      }
+  const reason = miningReason(player)
 
-      if (card.mode === 'leftPays') {
-        const other = game.players[leftIndex(game.players, index)]
-        if (other.active) {
-          adjustBalance(other.id, -card.amount)
-          adjustBalance(player.id, card.amount)
-          roundEvents.push(`${other.name} paid ${card.amount} Istokens to ${player.name}.`)
-          transactions.push({ type: 'transfer', from: other.name, to: player.name, amount: card.amount, reason: card.title })
-        }
-      }
-
-      if (card.mode === 'rightPays') {
-        const other = game.players[rightIndex(game.players, index)]
-        if (other.active) {
-          adjustBalance(other.id, -card.amount)
-          adjustBalance(player.id, card.amount)
-          roundEvents.push(`${other.name} paid ${card.amount} Istokens to ${player.name}.`)
-          transactions.push({ type: 'transfer', from: other.name, to: player.name, amount: card.amount, reason: card.title })
-        }
-      }
-
-      if (card.mode === 'allPay') {
-        for (const other of game.players) {
-          if (other.id !== player.id && other.active) {
-            adjustBalance(other.id, -card.amount)
-            adjustBalance(player.id, card.amount)
-            transactions.push({ type: 'transfer', from: other.name, to: player.name, amount: card.amount, reason: card.title })
-          }
-        }
-        roundEvents.push(`${player.name} received ${card.amount} Istokens from each other active player.`)
-      }
+  if (reason) {
+    game.miningOffer = {
+      playerId: player.id,
+      cards: [],
+      selected: null,
+      blocked: true,
+      reason
     }
-
-    if (card.category === 'expense') {
-      if (card.mode === 'bank') {
-        adjustBalance(player.id, -card.amount)
-        roundEvents.push(`${player.name} paid ${card.amount} Istokens to the bank.`)
-        transactions.push({ type: 'expense', from: player.name, to: 'Bank', amount: card.amount, reason: card.title })
-      }
-
-      if (card.mode === 'leftReceives') {
-        const other = game.players[leftIndex(game.players, index)]
-        if (other.active) {
-          adjustBalance(player.id, -card.amount)
-          adjustBalance(other.id, card.amount)
-          roundEvents.push(`${player.name} paid ${card.amount} Istokens to ${other.name}.`)
-          transactions.push({ type: 'transfer', from: player.name, to: other.name, amount: card.amount, reason: card.title })
-        }
-      }
-
-      if (card.mode === 'rightReceives') {
-        const other = game.players[rightIndex(game.players, index)]
-        if (other.active) {
-          adjustBalance(player.id, -card.amount)
-          adjustBalance(other.id, card.amount)
-          roundEvents.push(`${player.name} paid ${card.amount} Istokens to ${other.name}.`)
-          transactions.push({ type: 'transfer', from: player.name, to: other.name, amount: card.amount, reason: card.title })
-        }
-      }
-
-      if (card.mode === 'allReceive') {
-        for (const other of game.players) {
-          if (other.id !== player.id && other.active) {
-            adjustBalance(player.id, -card.amount)
-            adjustBalance(other.id, card.amount)
-            transactions.push({ type: 'transfer', from: player.name, to: other.name, amount: card.amount, reason: card.title })
-          }
-        }
-        roundEvents.push(`${player.name} paid ${card.amount} Istokens to each other active player.`)
-      }
-    }
-
-    if (card.category === 'action') {
-      if (card.actionType === 'jellyfish') {
-        player.skipNextMining = true
-        roundEvents.push(`${player.name} will skip the next mining round.`)
-        transactions.push({ type: 'action', actor: player.name, effect: 'skip_next_mining', reason: card.title })
-      }
-
-      if (card.actionType === 'fire') {
-        for (const other of game.players) {
-          if (other.id !== player.id && other.active) {
-            adjustBalance(other.id, -1)
-            adjustBalance(player.id, 1)
-            transactions.push({ type: 'transfer', from: other.name, to: player.name, amount: 1, reason: card.title })
-          }
-        }
-        roundEvents.push(`${player.name} used Fire and got 1 Istoken from each other active player.`)
-      }
-
-      if (card.actionType === 'totem') {
-        player.permanentlyBlocked = true
-        roundEvents.push(`${player.name} became permanently blocked from mining.`)
-        transactions.push({ type: 'action', actor: player.name, effect: 'permanently_blocked', reason: card.title })
-      }
-    }
-  }
-}
-
-function eliminatePlayers(roundEvents) {
-  for (const player of game.players) {
-    if (player.active && player.istokens < 0) {
-      player.active = false
-      roundEvents.push(`${player.name} dropped below zero and is out of the game.`)
-    }
-  }
-}
-
-function resolveEndGame() {
-  const activePlayers = game.players.filter((player) => player.active)
-
-  if (activePlayers.length === 1) {
-    game.gameOver = true
-    game.winnerName = activePlayers[0].name
-    game.phase = 'finished'
     return
   }
 
-  if (activePlayers.length === 0) {
-    game.gameOver = true
-    game.winnerName = 'No one'
-    game.phase = 'finished'
-    return
-  }
-
-  const minersAvailable = activePlayers.some(
-    (player) => !player.permanentlyBlocked && !player.skipNextMining
-  )
-
-  if (!minersAvailable) {
-    const winner = [...activePlayers].sort((a, b) => b.istokens - a.istokens)[0]
-    game.gameOver = true
-    game.winnerName = winner.name
-    game.phase = 'finished'
-  }
+  game.miningOffer = drawMiningOffer(game, player)
 }
 
-function processAiPlayers() {
-  const moves = game.lastRound.moves
-  const aiActions = game.lastRound.aiActions
+function scoreMiningCard(card, visibleCards) {
+  return visibleCards.reduce((total, other) => {
+    if (!other) return total
 
-  for (const player of game.players) {
-    if (!player.active || player.isHuman) continue
-
-    const dice = Math.floor(Math.random() * 6) + 1
-    const move = moveAndDraw(player.id, dice)
-    if (move) {
-      moves.push(move)
-    }
-
-    if (player.permanentlyBlocked) {
-      aiActions.push(`${player.name} is permanently blocked from mining.`)
-      continue
-    }
-
-    if (player.skipNextMining) {
-      aiActions.push(`${player.name} skips mining this round.`)
-      player.skipNextMining = false
-      continue
-    }
-
-    if (player.blockedThisRound) {
-      aiActions.push(`${player.name} is blocked from mining this round.`)
-      continue
-    }
-
-    if (player.istokens <= MINING_COST) {
-      aiActions.push(`${player.name} cannot afford mining.`)
-      continue
-    }
-
-    const willMine = Math.random() > 0.3
-
-    if (!willMine) {
-      aiActions.push(`${player.name} decided not to mine.`)
-      continue
-    }
-
-    player.istokens -= MINING_COST
-    player.miningCard = drawMiningCard(player)
-    aiActions.push(`${player.name} joined mining.`)
-  }
+    return total + (card.rank === other.rank ? 1 : 0) + (card.suit === other.suit ? 1 : 0)
+  }, 0)
 }
 
-function resolveRound(humanWillMine) {
-  const roundEvents = []
-  const transactions = []
+function executeCards(game, logs) {
+  const players = game.players.map((player) => ({ ...player }))
 
-  const human = game.players.find((player) => player.isHuman)
-
-  if (human && human.active) {
-    if (human.permanentlyBlocked) {
-      roundEvents.push(`${human.name} is permanently blocked from mining.`)
-    } else if (human.skipNextMining) {
-      roundEvents.push(`${human.name} skips mining this round.`)
-      human.skipNextMining = false
-    } else if (human.blockedThisRound) {
-      roundEvents.push(`${human.name} is blocked from mining this round.`)
-    } else if (humanWillMine && human.istokens > MINING_COST) {
-      human.istokens -= MINING_COST
-      human.miningCard = drawMiningCard(human)
-      roundEvents.push(`${human.name} joined mining and paid 1 Istoken.`)
-      transactions.push({ type: 'mining_cost', from: human.name, to: 'Network', amount: 1 })
-    } else {
-      roundEvents.push(`${human.name} did not mine this round.`)
-    }
+  const add = (index, amount) => {
+    players[index].coins += amount
   }
 
-  processAiPlayers()
+  players.forEach((player, index) => {
+    if (!player.active || !player.transactionCard) return
 
-  const visibleCards = [game.winningCard, ...game.players.map((player) => player.currentCard).filter(Boolean)]
-  const miners = game.players.filter((player) => player.active && player.miningCard)
+    const card = player.transactionCard
 
-  for (const player of miners) {
-    player.miningScore = calculateMiningScore(player.miningCard, visibleCards)
-  }
+    if (card.effect === 'bankGain') add(index, card.amount)
+    if (card.effect === 'bankLoss') add(index, -card.amount)
 
-  let roundWinner = null
+    if (card.effect === 'leftPays') {
+      const target = leftIndex(players, index)
 
-  if (miners.length > 0) {
-    const sorted = [...miners].sort((a, b) => {
-      if (b.miningScore !== a.miningScore) return b.miningScore - a.miningScore
-      return b.miningCard.value - a.miningCard.value
-    })
-
-    const topScore = sorted[0].miningScore
-    const tied = sorted.filter((player) => player.miningScore === topScore)
-
-    if (tied.length === 1) {
-      roundWinner = tied[0]
-    } else {
-      const bestCardValue = Math.max(...tied.map((player) => player.miningCard.value))
-      const finalists = tied.filter((player) => player.miningCard.value === bestCardValue)
-      roundWinner = finalists[Math.floor(Math.random() * finalists.length)]
+      if (target >= 0) {
+        add(target, -card.amount)
+        add(index, card.amount)
+      }
     }
 
-    roundWinner.istokens += MINING_REWARD
-    game.winningCard = roundWinner.miningCard
-    roundEvents.push(`${roundWinner.name} won mining and received ${MINING_REWARD} Istokens.`)
-    transactions.push({ type: 'mining_reward', from: 'Network', to: roundWinner.name, amount: MINING_REWARD })
-  } else {
-    roundEvents.push('No one mined this round.')
-  }
+    if (card.effect === 'rightPays') {
+      const target = rightIndex(players, index)
 
-  executeCardEffects(roundEvents, transactions)
-  eliminatePlayers(roundEvents)
+      if (target >= 0) {
+        add(target, -card.amount)
+        add(index, card.amount)
+      }
+    }
 
-  const previousBlock = game.chain[game.chain.length - 1]
-  const blockData = {
-    index: game.chain.length,
-    round: game.round,
-    timestamp: new Date().toISOString(),
-    previousHash: previousBlock.hash,
-    miner: roundWinner ? roundWinner.name : 'No miner',
-    transactions,
-    balances: getLedger(),
-    winningCard: game.winningCard
-  }
+    if (card.effect === 'payLeft') {
+      const target = leftIndex(players, index)
 
-  const block = {
-    ...blockData,
-    hash: createHash(blockData)
-  }
+      if (target >= 0) {
+        add(index, -card.amount)
+        add(target, card.amount)
+      }
+    }
 
-  game.chain.push(block)
-  game.lastRound.events = roundEvents
-  resolveEndGame()
+    if (card.effect === 'payRight') {
+      const target = rightIndex(players, index)
 
-  if (!game.gameOver) {
-    game.round += 1
-    game.phase = 'awaiting_roll'
-  }
-}
+      if (target >= 0) {
+        add(index, -card.amount)
+        add(target, card.amount)
+      }
+    }
 
-app.post('/api/game/start', (req, res) => {
-  const { playerCount, names } = req.body
+    if (card.effect === 'allPay') {
+      players.forEach((other, otherIndex) => {
+        if (otherIndex !== index && other.active) {
+          add(otherIndex, -card.amount)
+          add(index, card.amount)
+        }
+      })
+    }
 
-  if (![2, 3, 4].includes(playerCount)) {
-    return res.status(400).json({ error: 'Player count must be 2, 3, or 4.' })
-  }
+    if (card.effect === 'payAll') {
+      players.forEach((other, otherIndex) => {
+        if (otherIndex !== index && other.active) {
+          add(index, -card.amount)
+          add(otherIndex, card.amount)
+        }
+      })
+    }
 
-  const safeNames = Array.isArray(names) ? names : []
-  const players = Array.from({ length: playerCount }, (_, index) => {
-    const defaultName = index === 0 ? 'Player 1' : `AI ${index + 1}`
-    const name = typeof safeNames[index] === 'string' && safeNames[index].trim()
-      ? safeNames[index].trim()
-      : defaultName
+    if (card.action === 'jellyfish') {
+      players[index].skipNextMining = true
+    }
 
-    return buildPlayer(index + 1, name, PLAYER_COLORS[index], index === 0)
+    if (card.action === 'fire') {
+      players.forEach((other, otherIndex) => {
+        if (otherIndex !== index && other.active) {
+          add(otherIndex, -1)
+          add(index, 1)
+        }
+      })
+    }
+
+    if (card.action === 'totem') {
+      players[index].blockedForever = true
+    }
+
+    logs.push(`${player.name} executes ${card.title}: ${card.text}`)
   })
 
-  const standardDeck = createStandardDeck()
-  const winningCard = standardDeck[0]
+  return players
+}
 
-  game = {
-    round: 1,
-    phase: 'awaiting_roll',
-    players,
-    winningCard,
-    standardDeck: standardDeck.slice(1),
-    incomeDeck: shuffle(INCOME_CARDS),
-    expenseDeck: shuffle(EXPENSE_CARDS),
-    actionDeck: shuffle(ACTION_CARDS),
-    chain: [createGenesisBlock()],
-    gameOver: false,
-    winnerName: null,
-    lastRound: {
-      moves: [],
-      aiActions: [],
-      events: []
+function resolveMiningAndLedger(game) {
+  const beforeBalances = game.players.map((player) => ({
+    id: player.id,
+    name: player.name,
+    before: player.coins
+  }))
+
+  const logs = []
+  const visibleCards = [
+    game.winningCard,
+    ...game.players.map((player) => player.transactionCard).filter(Boolean)
+  ]
+
+  const miners = game.players
+    .filter((player) => player.active && player.miningCard)
+    .map((player) => ({
+      ...player,
+      miningScore: scoreMiningCard(player.miningCard, visibleCards)
+    }))
+
+  let newWinningCard = game.winningCard
+  let newBlock = null
+
+  if (miners.length > 0) {
+    let finalists = [...miners].sort((a, b) => b.miningScore - a.miningScore || b.miningCard.value - a.miningCard.value)
+    const bestScore = finalists[0].miningScore
+    finalists = finalists.filter((player) => player.miningScore === bestScore)
+    const bestValue = Math.max(...finalists.map((player) => player.miningCard.value))
+    finalists = finalists.filter((player) => player.miningCard.value === bestValue)
+
+    const miningWinner = finalists[0]
+
+    game.players = game.players.map((player) =>
+      player.id === miningWinner.id
+        ? { ...player, coins: player.coins + MINING_REWARD }
+        : player
+    )
+
+    newWinningCard = miningWinner.miningCard
+    newBlock = {
+      id: `block-${game.round}-${Date.now()}`,
+      title: `Block ${game.round}`,
+      miner: miningWinner.name,
+      reward: MINING_REWARD,
+      card: newWinningCard,
+      hash: createHash({
+        round: game.round,
+        miner: miningWinner.name,
+        winningCard: newWinningCard
+      })
     }
+
+    logs.push(`${miningWinner.name} wins mining with ${face(miningWinner.miningCard)} and receives 5 Istoken.`)
+  } else {
+    logs.push('No player joined mining. No block reward was paid.')
   }
 
-  return res.json({ state: sanitizeState() })
+  game.winningCard = newWinningCard
+
+  if (newBlock) {
+    game.blocks = [newBlock, ...game.blocks]
+  }
+
+  game.players = executeCards(game, logs)
+  game.players = game.players.map((player) =>
+    player.coins < 0 ? { ...player, active: false } : player
+  )
+
+  game.ledgerChanges = game.players.map((player) => {
+    const before = beforeBalances.find((item) => item.id === player.id)?.before ?? player.coins
+
+    return {
+      id: player.id,
+      name: player.name,
+      before,
+      after: player.coins,
+      difference: player.coins - before
+    }
+  })
+
+  addLedger(game, logs)
+
+  const activePlayers = game.players.filter((player) => player.active)
+
+  if (activePlayers.length <= 1) {
+    game.winner = activePlayers[0]
+      ? `${activePlayers[0].name} wins because only one player remains.`
+      : 'Game over.'
+    game.phase = 'game-over'
+    return
+  }
+
+  game.currentEvent = {
+    title: 'Ledger Confirmation',
+    text: newBlock
+      ? `${newBlock.miner} validated the transactions and created a new block.`
+      : 'No block was created this round.',
+    note: 'Shared ledger updated.',
+    privateNote: 'All players must confirm the same updated balances before the next round begins.',
+    lesson: 'A blockchain ledger is a shared record. Everyone sees the same balance updates.'
+  }
+
+  game.ledgerConfirmedBy = []
+  game.phase = 'ledger-confirmation'
+}
+
+function broadcastRoom(room) {
+  io.to(room.code).emit('room-updated', publicRoom(room))
+}
+
+io.on('connection', (socket) => {
+  console.log('Player connected:', socket.id)
+
+  socket.emit('server-message', {
+    message: 'Connected to Market Island multiplayer server',
+    socketId: socket.id
+  })
+
+  socket.on('create-room', ({ playerName }, callback) => {
+    const safeName = typeof playerName === 'string' && playerName.trim()
+      ? playerName.trim()
+      : 'Player 1'
+
+    const code = createRoomCode()
+
+    rooms[code] = {
+      code,
+      hostId: socket.id,
+      status: 'waiting',
+      players: [
+        {
+          id: socket.id,
+          name: safeName,
+          color: PLAYER_COLORS[0]
+        }
+      ],
+      game: null
+    }
+
+    socket.join(code)
+    callback({ ok: true, room: publicRoom(rooms[code]) })
+    broadcastRoom(rooms[code])
+  })
+
+  socket.on('join-room', ({ roomCode, playerName }, callback) => {
+    const code = String(roomCode || '').trim().toUpperCase()
+    const room = rooms[code]
+
+    if (!room) return callback({ ok: false, error: 'Room not found.' })
+    if (room.players.length >= MAX_ROOM_PLAYERS) return callback({ ok: false, error: 'Room is full.' })
+    if (room.status !== 'waiting') return callback({ ok: false, error: 'Game already started.' })
+
+    const safeName = typeof playerName === 'string' && playerName.trim()
+      ? playerName.trim()
+      : `Player ${room.players.length + 1}`
+
+    if (!room.players.some((player) => player.id === socket.id)) {
+      room.players.push({
+        id: socket.id,
+        name: safeName,
+        color: PLAYER_COLORS[room.players.length]
+      })
+    }
+
+    socket.join(code)
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('start-room-game', ({ roomCode }, callback) => {
+    const code = String(roomCode || '').trim().toUpperCase()
+    const room = rooms[code]
+
+    if (!room) return callback({ ok: false, error: 'Room not found.' })
+    if (room.hostId !== socket.id) return callback({ ok: false, error: 'Only the host can start the game.' })
+    if (room.players.length < 2) return callback({ ok: false, error: 'At least 2 players are needed.' })
+
+    room.status = 'playing'
+    room.game = createRoomGame(room)
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-roll-dice', ({ roomCode }, callback) => {
+    const code = String(roomCode || '').trim().toUpperCase()
+    const room = rooms[code]
+    const game = room?.game
+
+    if (!room || !game) return callback({ ok: false, error: 'Game not found.' })
+    if (game.phase !== 'movement') return callback({ ok: false, error: 'It is not the movement phase.' })
+
+    const player = game.players[game.currentTurnIndex]
+
+    if (!player || player.id !== socket.id) {
+      return callback({ ok: false, error: 'It is not your turn.' })
+    }
+
+    const roll = Math.floor(Math.random() * 6) + 1
+    const moved = movePlayer(player, roll)
+    const tile = BOARD_TILES[moved.position]
+    const card = drawCardForTile(game, tile)
+    const logs = []
+
+    if (moved.crossedStart) {
+      moved.coins += 4
+      logs.push(`${moved.name} crossed Start and received 4 Istoken.`)
+    }
+
+    if (tile.type === 'jellyfish') {
+      moved.coins -= 1
+      logs.push(`${moved.name} landed on Jellyfish and paid 1 extra Istoken.`)
+    }
+
+    if (tile.type === 'fire') {
+      moved.coins += 1
+      logs.push(`${moved.name} landed on Fire and received 1 extra Istoken.`)
+    }
+
+    if (tile.type === 'totem') {
+      moved.blockedThisRound = true
+      logs.push(`${moved.name} landed on Totem and cannot mine this round.`)
+    }
+
+    moved.transactionCard = card
+    game.players[game.currentTurnIndex] = moved
+    game.diceValue = roll
+    game.phase = 'card-reveal'
+
+    game.currentEvent = {
+      ownerId: moved.id,
+      title: `${moved.label} / ${moved.colorName}: ${moved.name}`,
+      text: `${moved.name} rolled ${roll} and moved to ${tile.label}.`,
+      note: 'Transaction card picked up.',
+      privateNote: `${card.title}: ${card.text} (${face(card)})`,
+      card,
+      lesson: 'This card is a transaction. It is picked up now, but its effect is applied after mining.'
+    }
+
+    addLedger(game, [
+      `${moved.name} rolled ${roll}, moved to ${tile.label}, and picked up a hidden ${card.kind} card.`,
+      ...logs
+    ])
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-continue-after-card', ({ roomCode }, callback) => {
+    const code = String(roomCode || '').trim().toUpperCase()
+    const room = rooms[code]
+    const game = room?.game
+
+    if (!room || !game) return callback({ ok: false, error: 'Game not found.' })
+    if (game.phase !== 'card-reveal') return callback({ ok: false, error: 'No card is waiting.' })
+
+    const player = game.players[game.currentTurnIndex]
+
+    if (!player || player.id !== socket.id) {
+      return callback({ ok: false, error: 'Only the current player can continue.' })
+    }
+
+    const nextIndex = nextActiveIndex(game.players, game.currentTurnIndex)
+
+    if (nextIndex >= 0) {
+      game.currentTurnIndex = nextIndex
+      game.phase = 'movement'
+    } else {
+      game.phase = 'mining'
+      game.currentMinerIndex = firstActiveIndex(game.players)
+      prepareMiningOffer(game)
+    }
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-select-mining-card', ({ roomCode, cardId }, callback) => {
+    const room = rooms[String(roomCode || '').trim().toUpperCase()]
+    const game = room?.game
+
+    if (!room || !game || !game.miningOffer) {
+      return callback({ ok: false, error: 'Mining offer not found.' })
+    }
+
+    if (game.miningOffer.playerId !== socket.id) {
+      return callback({ ok: false, error: 'This is not your mining choice.' })
+    }
+
+    const selected = game.miningOffer.cards.find((card) => card.id === cardId)
+
+    if (!selected) return callback({ ok: false, error: 'Card not found.' })
+
+    game.miningOffer.selected = selected
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-skip-mining', ({ roomCode }, callback) => {
+    const room = rooms[String(roomCode || '').trim().toUpperCase()]
+    const game = room?.game
+
+    if (!room || !game || game.phase !== 'mining') {
+      return callback({ ok: false, error: 'Mining phase not found.' })
+    }
+
+    const player = game.players[game.currentMinerIndex]
+
+    if (!player || player.id !== socket.id) {
+      return callback({ ok: false, error: 'This is not your mining turn.' })
+    }
+
+    game.players[game.currentMinerIndex] = {
+      ...player,
+      skipNextMining: false,
+      miningCard: null
+    }
+
+    const nextIndex = nextActiveIndex(game.players, game.currentMinerIndex)
+
+    if (nextIndex >= 0) {
+      game.currentMinerIndex = nextIndex
+      prepareMiningOffer(game)
+    } else {
+      game.miningOffer = null
+      resolveMiningAndLedger(game)
+    }
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-join-mining', ({ roomCode }, callback) => {
+    const room = rooms[String(roomCode || '').trim().toUpperCase()]
+    const game = room?.game
+
+    if (!room || !game || game.phase !== 'mining') {
+      return callback({ ok: false, error: 'Mining phase not found.' })
+    }
+
+    const player = game.players[game.currentMinerIndex]
+
+    if (!player || player.id !== socket.id) {
+      return callback({ ok: false, error: 'This is not your mining turn.' })
+    }
+
+    if (game.miningOffer?.blocked) {
+      return callback({ ok: false, error: game.miningOffer.reason })
+    }
+
+    game.players[game.currentMinerIndex] = {
+      ...player,
+      coins: player.coins - MINING_COST,
+      miningCard: game.miningOffer.selected,
+      skipNextMining: false
+    }
+
+    const nextIndex = nextActiveIndex(game.players, game.currentMinerIndex)
+
+    if (nextIndex >= 0) {
+      game.currentMinerIndex = nextIndex
+      prepareMiningOffer(game)
+    } else {
+      game.miningOffer = null
+      resolveMiningAndLedger(game)
+    }
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('room-confirm-ledger', ({ roomCode }, callback) => {
+    const room = rooms[String(roomCode || '').trim().toUpperCase()]
+    const game = room?.game
+
+    if (!room || !game) return callback({ ok: false, error: 'Game not found.' })
+
+    if (game.phase !== 'ledger-confirmation') {
+      return callback({ ok: false, error: 'Ledger is not waiting for confirmation.' })
+    }
+
+    if (!game.ledgerConfirmedBy.includes(socket.id)) {
+      game.ledgerConfirmedBy.push(socket.id)
+    }
+
+    const activePlayerIds = game.players
+      .filter((player) => player.active)
+      .map((player) => player.id)
+
+    const everyoneConfirmed = activePlayerIds.every((id) =>
+      game.ledgerConfirmedBy.includes(id)
+    )
+
+    if (!everyoneConfirmed) {
+      callback({ ok: true, room: publicRoom(room) })
+      broadcastRoom(room)
+      return
+    }
+
+    if (game.round >= ROUND_LIMIT) {
+      const activePlayers = game.players.filter((player) => player.active)
+      const richest = [...activePlayers].sort((a, b) => b.coins - a.coins)[0]
+
+      game.winner = richest
+        ? `${richest.name} wins after ${ROUND_LIMIT} rounds with the most Istoken.`
+        : 'Game over.'
+
+      game.phase = 'game-over'
+      game.currentEvent = null
+      game.ledgerConfirmedBy = []
+      game.miningOffer = null
+
+      callback({ ok: true, room: publicRoom(room) })
+      broadcastRoom(room)
+      return
+    }
+
+    game.round += 1
+    game.phase = 'movement'
+    game.currentTurnIndex = firstActiveIndex(game.players)
+    game.currentMinerIndex = 0
+    game.currentEvent = null
+    game.ledgerChanges = []
+    game.ledgerConfirmedBy = []
+    game.miningOffer = null
+    game.players = game.players.map((player) => ({
+      ...player,
+      transactionCard: null,
+      miningCard: null,
+      blockedThisRound: false,
+      lastRoll: null
+    }))
+
+    callback({ ok: true, room: publicRoom(room) })
+    broadcastRoom(room)
+  })
+
+  socket.on('leave-room', ({ roomCode }) => {
+    const room = rooms[String(roomCode || '').trim().toUpperCase()]
+
+    if (!room) return
+
+    room.players = room.players.filter((player) => player.id !== socket.id)
+    socket.leave(room.code)
+
+    if (room.players.length === 0) {
+      delete rooms[room.code]
+      return
+    }
+
+    if (room.hostId === socket.id) {
+      room.hostId = room.players[0].id
+    }
+
+    broadcastRoom(room)
+  })
+
+  socket.on('disconnect', () => {
+    for (const code of Object.keys(rooms)) {
+      const room = rooms[code]
+      const wasInRoom = room.players.some((player) => player.id === socket.id)
+
+      if (!wasInRoom) continue
+
+      room.players = room.players.filter((player) => player.id !== socket.id)
+
+      if (room.players.length === 0) {
+        delete rooms[code]
+        continue
+      }
+
+      if (room.hostId === socket.id) {
+        room.hostId = room.players[0].id
+      }
+
+      broadcastRoom(room)
+    }
+  })
 })
 
-app.get('/api/game/state', (req, res) => {
-  if (!game) {
-    return res.status(404).json({ error: 'No game found. Start a new game first.' })
-  }
-
-  return res.json({ state: sanitizeState() })
-})
-
-app.post('/api/game/player-roll', (req, res) => {
-  if (!game) {
-    return res.status(404).json({ error: 'No game found. Start a new game first.' })
-  }
-
-  if (game.gameOver) {
-    return res.status(400).json({ error: 'Game is already over.' })
-  }
-
-  if (game.phase !== 'awaiting_roll') {
-    return res.status(400).json({ error: 'It is not the roll phase.' })
-  }
-
-  resetRoundFields()
-  game.lastRound = {
-    moves: [],
-    aiActions: [],
-    events: []
-  }
-
-  const human = game.players.find((player) => player.isHuman)
-
-  if (!human || !human.active) {
-    return res.status(400).json({ error: 'Human player is not active.' })
-  }
-
-  const dice = Math.floor(Math.random() * 6) + 1
-  const move = moveAndDraw(human.id, dice)
-
-  if (move) {
-    game.lastRound.moves.push(move)
-  }
-
-  game.phase = 'awaiting_mine_choice'
-  return res.json({ state: sanitizeState() })
-})
-
-app.post('/api/game/player-mine', (req, res) => {
-  if (!game) {
-    return res.status(404).json({ error: 'No game found. Start a new game first.' })
-  }
-
-  if (game.gameOver) {
-    return res.status(400).json({ error: 'Game is already over.' })
-  }
-
-  if (game.phase !== 'awaiting_mine_choice') {
-    return res.status(400).json({ error: 'It is not the mining choice phase.' })
-  }
-
-  const { willMine } = req.body
-  resolveRound(Boolean(willMine))
-  return res.json({ state: sanitizeState() })
-})
-
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Market Island server running on http://localhost:${PORT}`)
 })
