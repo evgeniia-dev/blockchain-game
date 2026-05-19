@@ -5,7 +5,7 @@ import http from 'http'
 import { Server } from 'socket.io'
 
 const app = express()
-const PORT = 3001
+const PORT = process.env.PORT || 3001
 const httpServer = http.createServer(app)
 
 const io = new Server(httpServer, {
