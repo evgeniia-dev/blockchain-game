@@ -54,7 +54,7 @@ import story7 from './assets/story/story-7.png'
 import story8 from './assets/story/story-8.png'
 import story9 from './assets/story/story-9.png'
 
-const socket = io('http://localhost:3001')
+const socket = io('https://blockchain-game-production.up.railway.app')
 
 const STORY_IMAGES = [story1, story2, story3, story4, story5, story6, story7, story8, story9]
 
